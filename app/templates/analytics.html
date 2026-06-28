@@ -61,12 +61,69 @@
 <h2 class="text-lg font-semibold mb-3">Накопительно за 12 месяцев</h2>
 <canvas id="cumChart" height="200" class="mb-8 bg-white rounded-xl p-4 border"></canvas>
 
+<h2 class="text-lg font-semibold mb-3">Прогноз денежного потока (3 месяца)</h2>
+<div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm bg-white rounded-xl border border-slate-100">
+        <thead>
+            <tr class="border-b bg-slate-50">
+                <th class="text-left p-3">Месяц</th>
+                <th class="text-right p-3">Доход</th>
+                <th class="text-right p-3">План</th>
+                <th class="text-right p-3">Долги</th>
+                <th class="text-right p-3">Копилки</th>
+                <th class="text-right p-3">Чистый</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in cash_flow %}
+            <tr class="border-b">
+                <td class="p-3">{{ row.label }}</td>
+                <td class="p-3 text-right">{{ row.income | money }}</td>
+                <td class="p-3 text-right">{{ row.planned_expenses | money }}</td>
+                <td class="p-3 text-right">{{ row.debt_payments | money }}</td>
+                <td class="p-3 text-right">{{ row.fund_spends | money }}</td>
+                <td class="p-3 text-right {% if row.net >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ row.net | money }}</td>
+            </tr>
+            {% if row.events %}
+            <tr><td colspan="6" class="p-2 text-xs text-indigo-700 bg-indigo-50">{{ row.events | join(' · ') }}</td></tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if cascade %}
+<h2 class="text-lg font-semibold mb-3">Сценарий после закрытия долга</h2>
+{% for c in cascade %}
+<div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-3 text-sm">
+    <strong>{{ c.debt_name }}</strong>: +{{ c.freed_monthly | money }} ₽/мес<br>
+    {{ c.suggestion }}
+    {% if c.months_to_close_target %}<br>Кредитка закроется через ~{{ c.months_to_close_target }} мес{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<h2 class="text-lg font-semibold mb-3">Расходы по паре</h2>
+<div class="bg-white rounded-xl border border-slate-100 mb-8 divide-y">
+    {% for u in pair.users %}
+    <div class="p-3 flex justify-between text-sm">
+        <span>{{ u.user_name }} — топ: {{ u.top_category or '—' }}</span>
+        <span>{{ u.total | money }} ₽</span>
+    </div>
+    {% endfor %}
+</div>
+
 <h2 class="text-lg font-semibold mb-3">Долги</h2>
 {% for item in debts %}
 <div class="bg-white rounded-xl p-4 border border-slate-100 mb-3">
-    <div class="font-medium">{{ item.debt.name }} — {{ item.debt.remaining | money }} ₽</div>
+    <div class="font-medium">{{ item.debt.name }} — {{ item.debt.remaining | money }} ₽ @ {{ item.debt.interest_rate }}%</div>
     {% if item.forecast %}
     <div class="text-sm text-slate-500">Прогноз закрытия: {{ item.forecast.strftime('%m.%Y') }}</div>
+    {% endif %}
+    {% if item.cost and item.cost.scenarios %}
+    {% for s in item.cost.scenarios %}
+    <div class="text-xs text-slate-600 mt-1">{{ s.label }}: {{ s.months_to_close }} мес, переплата {{ s.total_interest | money }} ₽</div>
+    {% endfor %}
     {% endif %}
     {% if item.payments %}
     <div class="text-xs text-slate-400 mt-2">Последние платежи:</div>

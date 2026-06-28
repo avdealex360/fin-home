@@ -5,8 +5,12 @@ from decimal import Decimal
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Category, Debt, Goal, MonthlyPlan, Setting, Transaction
+from app.models import Category, Goal, MonthlyPlan, Transaction
 from app.seed import GROUP_PERCENTS
+from app.services.allocation import get_unallocated_total, is_month_fully_allocated
+from app.services.debts import get_active_debts_sorted, monthly_interest_cost
+from app.services.exchange import income_eur_total, salary_comparison
+from app.services.sinking_funds import FundSummary, SinkingFundService
 
 
 @dataclass
@@ -33,6 +37,10 @@ class DebtSummary:
     next_payment_date: date | None
     type: str
     is_closed: bool
+    interest_rate: Decimal = Decimal("0")
+    priority_rank: int | None = None
+    monthly_interest: Decimal = Decimal("0")
+    priority_label: str = ""
 
 
 @dataclass
@@ -58,9 +66,15 @@ class MonthSummary:
     savings_target_rate: float = 20.0
     deposit_balance: Decimal = Decimal("0")
     income_eur: Decimal = Decimal("0")
+    unallocated: Decimal = Decimal("0")
+    is_fully_allocated: bool = True
+    income_eur_rate: Decimal | None = None
+    salary_last_month: Decimal | None = None
+    salary_diff: Decimal | None = None
     groups: list[GroupSummary] = field(default_factory=list)
     debts: list[DebtSummary] = field(default_factory=list)
     goals: list[GoalSummary] = field(default_factory=list)
+    funds: list[FundSummary] = field(default_factory=list)
     has_plan: bool = False
 
 
@@ -75,18 +89,7 @@ def _usage_color(percent: float) -> str:
     return "red"
 
 
-def get_setting(db: Session, key: str, default: str = "") -> str:
-    row = db.query(Setting).filter(Setting.key == key).first()
-    return row.value if row else default
-
-
-def set_setting(db: Session, key: str, value: str) -> None:
-    row = db.query(Setting).filter(Setting.key == key).first()
-    if row:
-        row.value = value
-    else:
-        db.add(Setting(key=key, value=value))
-    db.commit()
+from app.services.settings_store import get_setting, set_setting
 
 
 class DashboardService:
@@ -135,10 +138,11 @@ class DashboardService:
         savings_rate = float(savings_spent / income_fact * 100) if income_fact > 0 else 0.0
         remaining = income_fact - total_spent
         deposit_balance = Decimal(get_setting(db, "deposit_balance", "0"))
-
-        from app.services.exchange import income_eur_total
-
         income_eur = income_eur_total(db, year, month)
+        unallocated = get_unallocated_total(db, year, month)
+        fully_allocated = is_month_fully_allocated(db, year, month)
+
+        last_salary, salary_diff = salary_comparison(db, year, month, income_fact)
 
         groups = []
         for group_name, percent in GROUP_PERCENTS.items():
@@ -159,39 +163,49 @@ class DashboardService:
                 )
             )
 
+        debts_raw = get_active_debts_sorted(db)
         debts = []
-        for debt in db.query(Debt).order_by(Debt.id).all():
+        for debt_row in debts_raw:
             progress = (
-                float((debt.total_amount - debt.remaining) / debt.total_amount * 100)
-                if debt.total_amount > 0
+                float((debt_row.total_amount - debt_row.remaining) / debt_row.total_amount * 100)
+                if debt_row.total_amount > 0
                 else 0.0
             )
+            interest = monthly_interest_cost(debt_row)
+            label = ""
+            if debt_row.interest_rate >= Decimal("10"):
+                label = "Приоритет"
+            elif debt_row.interest_rate <= 0:
+                label = "Не срочно"
             debts.append(
                 DebtSummary(
-                    id=debt.id,
-                    name=debt.name,
-                    remaining=debt.remaining,
-                    total_amount=debt.total_amount,
+                    id=debt_row.id,
+                    name=debt_row.name,
+                    remaining=debt_row.remaining,
+                    total_amount=debt_row.total_amount,
                     progress_percent=progress,
-                    monthly_payment=debt.monthly_payment,
-                    grace_period_end=debt.grace_period_end,
-                    next_payment_date=debt.next_payment_date,
-                    type=debt.type,
-                    is_closed=debt.is_closed,
+                    monthly_payment=debt_row.monthly_payment,
+                    grace_period_end=debt_row.grace_period_end,
+                    next_payment_date=debt_row.next_payment_date,
+                    type=debt_row.type,
+                    is_closed=debt_row.is_closed,
+                    interest_rate=debt_row.interest_rate,
+                    priority_rank=debt_row.priority_rank,
+                    monthly_interest=interest,
+                    priority_label=label,
                 )
             )
 
         goals = []
+        from app.services.goals import months_to_goal_with_capitalization
+
         for goal in db.query(Goal).filter(Goal.is_active).order_by(Goal.id).all():
             progress = (
                 float(goal.current_amount / goal.target_amount * 100)
                 if goal.target_amount > 0
                 else 0.0
             )
-            months = None
-            if goal.monthly_contribution > 0 and goal.target_amount > goal.current_amount:
-                remaining_goal = goal.target_amount - goal.current_amount
-                months = int((remaining_goal / goal.monthly_contribution).to_integral_value())
+            months = months_to_goal_with_capitalization(db, goal)
             goals.append(
                 GoalSummary(
                     id=goal.id,
@@ -204,6 +218,8 @@ class DashboardService:
                 )
             )
 
+        funds = SinkingFundService.get_summaries(db)
+
         return MonthSummary(
             year=year,
             month=month,
@@ -214,9 +230,14 @@ class DashboardService:
             savings_rate=savings_rate,
             deposit_balance=deposit_balance,
             income_eur=income_eur,
+            unallocated=unallocated,
+            is_fully_allocated=fully_allocated,
+            salary_last_month=last_salary,
+            salary_diff=salary_diff,
             groups=groups,
             debts=debts,
             goals=goals,
+            funds=funds,
             has_plan=plan is not None and income_plan > 0,
         )
 
@@ -231,7 +252,7 @@ class DashboardService:
         if plan and plan.limits:
             cat_ids = [c.id for c in db.query(Category).filter(Category.group == group).all()]
             total = sum(
-                (lim.limit_amount for lim in plan.limits if lim.category_id in cat_ids),
+                (lim.limit_amount + (lim.carried_over or Decimal("0")) for lim in plan.limits if lim.category_id in cat_ids),
                 Decimal("0"),
             )
             if total > 0:

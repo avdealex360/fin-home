@@ -16,10 +16,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 
     today = date.today()
     summary = DashboardService.get_month_summary(db, today.year, today.month)
-    advice = RuleEngine.evaluate(db, today.year, today.month)
-    RuleEngine.mark_shown(db, advice)
+    advice_tiers = RuleEngine.evaluate(db, today.year, today.month)
+    RuleEngine.mark_shown(db, advice_tiers)
 
-    from app.models import AppUser, Category, Transaction
+    from app.models import AppUser, Category, SinkingFund, Transaction
 
     recent = (
         db.query(Transaction)
@@ -36,18 +36,20 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     expense_categories = [c for c in categories if c.group != "income"]
     income_categories = [c for c in categories if c.group == "income"]
     users = db.query(AppUser).filter(AppUser.is_active.is_(True)).all()
+    funds = db.query(SinkingFund).filter(SinkingFund.is_active.is_(True)).all()
 
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "summary": summary,
-            "advice": advice,
+            "advice_tiers": advice_tiers,
             "recent": recent,
             "categories": expense_categories,
             "income_categories": income_categories,
             "all_categories": categories,
             "users": users,
+            "funds": funds,
             "today": today.isoformat(),
         },
     )

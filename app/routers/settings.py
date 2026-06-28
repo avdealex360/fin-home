@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Category, Debt, Goal, Setting, Transaction
-from app.services.dashboard import set_setting
+from app.services.settings_store import set_setting
 from app.templates_config import templates
 
 router = APIRouter(prefix="/settings", tags=["settings"])

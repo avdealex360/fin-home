@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Копилки — Семейный бюджет{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Копилки</h1>
+
+{% if request.query_params.get('saved') %}
+<p class="text-sm text-green-700 bg-green-50 border border-green-100 rounded-xl px-3 py-2 mb-4">Сохранено</p>
+{% endif %}
+
+<div class="space-y-4 mb-8">
+    {% for fund in funds %}
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+        <div class="flex justify-between mb-2">
+            <span class="font-semibold">{{ fund.name }}</span>
+            <span>{{ fund.current_amount | money }} / {{ fund.target_amount | money }} ₽</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2 mb-2">
+            <div class="h-2 rounded-full bg-teal-500"
+                style="width: {{ [fund.current_amount / fund.target_amount * 100 if fund.target_amount > 0 else 0, 100]|min }}%"></div>
+        </div>
+        <p class="text-sm text-slate-500">Взнос: {{ fund.monthly_contribution | money }} ₽/мес
+            {% if fund.target_date %} · до {{ fund.target_date.strftime('%d.%m.%Y') }}{% endif %}
+            {% if fund.is_rolling %} · rolling{% endif %}
+        </p>
+        <details class="mt-3">
+            <summary class="text-sm text-indigo-600 cursor-pointer">Пополнить / потратить</summary>
+            <form method="post" action="/funds/{{ fund.id }}/contribute" class="mt-2 space-y-2">
+                <input type="text" name="amount" placeholder="Сумма взноса" class="w-full p-2 border rounded-lg" required>
+                <input type="date" name="date" value="{{ today }}" class="w-full p-2 border rounded-lg">
+                <button type="submit" class="btn-primary text-sm">Пополнить</button>
+            </form>
+            <form method="post" action="/funds/{{ fund.id }}/spend" class="mt-2 space-y-2">
+                <input type="text" name="amount" placeholder="Сумма траты" class="w-full p-2 border rounded-lg" required>
+                <input type="date" name="date" value="{{ today }}" class="w-full p-2 border rounded-lg">
+                <button type="submit" class="btn-primary text-sm bg-amber-600">Трата из копилки</button>
+            </form>
+        </details>
+    </div>
+    {% else %}
+    <p class="text-slate-500">Копилки не настроены.</p>
+    {% endfor %}
+</div>
+
+<h2 class="text-lg font-semibold mb-3">Новая копилка</h2>
+<form method="post" action="/funds/" class="bg-white rounded-xl p-4 border space-y-3">
+    <input type="text" name="name" placeholder="Название" required class="w-full p-3 border rounded-xl">
+    <input type="text" name="target_amount" placeholder="Цель, ₽" required class="w-full p-3 border rounded-xl">
+    <input type="text" name="monthly_contribution" placeholder="Взнос/мес, ₽" required class="w-full p-3 border rounded-xl">
+    <select name="category_group" class="w-full p-3 border rounded-xl">
+        <option value="needs">Нужды</option>
+        <option value="wants">Желания</option>
+    </select>
+    <select name="linked_category_id" class="w-full p-3 border rounded-xl">
+        <option value="">— Категория трат —</option>
+        {% for cat in categories %}
+        <option value="{{ cat.id }}">{{ cat.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="date" name="target_date" class="w-full p-3 border rounded-xl">
+    <label class="text-sm"><input type="checkbox" name="is_rolling" value="1"> Rolling (сброс после цели)</label>
+    <button type="submit" class="btn-primary">Создать</button>
+</form>
+{% endblock %}

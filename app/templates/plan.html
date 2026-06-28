@@ -135,4 +135,14 @@
     <input type="hidden" name="expected_income" value="{% if plan %}{{ plan.expected_income }}{% else %}0{% endif %}">
     <button type="submit" class="btn-secondary">Пересчитать 50/30/20 автоматически</button>
 </form>
+
+{% if plan and not plan.is_closed %}
+<form method="post" action="/plan/{{ year }}/{{ month }}/close" class="mt-6 p-4 bg-slate-100 rounded-xl">
+    <h3 class="font-semibold mb-2">Закрыть месяц</h3>
+    <p class="text-sm text-slate-600 mb-3">Зафиксировать остатки и перенести положительные остатки в следующий месяц</p>
+    <button type="submit" class="btn-primary bg-slate-700">Закрыть {{ month_name(month) }} {{ year }}</button>
+</form>
+{% elif plan and plan.is_closed %}
+<p class="mt-6 text-sm text-green-700 bg-green-50 border border-green-100 rounded-xl px-3 py-2">Месяц закрыт</p>
+{% endif %}
 {% endblock %}

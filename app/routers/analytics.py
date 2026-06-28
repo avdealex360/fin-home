@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Category, Debt
 from app.services.analytics import AnalyticsService
+from app.services.debts import debt_cost_analysis
+from app.services.forecast import ForecastService
+from app.services.pair_analytics import PairAnalyticsService
 from app.templates_config import templates
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -36,6 +39,7 @@ def analytics_page(
                 "debt": debt,
                 "forecast": AnalyticsService.debt_forecast(db, debt.id),
                 "payments": AnalyticsService.debt_payments(db, debt.id),
+                "cost": debt_cost_analysis(db, debt.id),
             }
         )
 
@@ -56,6 +60,10 @@ def analytics_page(
     cum_savings = [c["savings"] for c in cumulative]
     cat_chart_labels = [f"{y}-{m:02d}" for y, m, _ in cat_history]
     cat_chart_values = [float(v) for _, _, v in cat_history]
+
+    cash_flow = ForecastService.cash_flow_forecast(db, 3)
+    cascade = ForecastService.cascade_after_debt_close(db)
+    pair = PairAnalyticsService.monthly_breakdown(db, year, month)
 
     return templates.TemplateResponse(
         request,
@@ -81,5 +89,8 @@ def analytics_page(
             "cum_savings": cum_savings,
             "cat_chart_labels": cat_chart_labels,
             "cat_chart_values": cat_chart_values,
+            "cash_flow": cash_flow,
+            "cascade": cascade,
+            "pair": pair,
         },
     )

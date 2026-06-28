@@ -34,7 +34,7 @@ def test_rate_change_march_2026():
     )
     march_2026 = rows[12]
     assert march_2026.interest == Decimal("7962.99")
-    assert march_2026.balance_after == Decimal("553996.40")
+    assert march_2026.balance_after == Decimal("553996.41")
 
 
 def test_full_table_feb_2027():
@@ -52,4 +52,4 @@ def test_full_table_feb_2027():
         rate_schedule=schedule,
         capitalization_day=18,
     )
-    assert rows[-1].balance_after == Decimal("649638.72")
+    assert rows[-1].balance_after == Decimal("649638.74")

@@ -22,12 +22,61 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    group: Mapped[str] = mapped_column(String(20), nullable=False)  # needs, wants, savings
+    group: Mapped[str] = mapped_column(String(20), nullable=False)  # needs, wants, savings, income
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    allocation_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
     limits: Mapped[list["CategoryLimit"]] = relationship(back_populates="category")
+
+
+class SinkingFund(Base):
+    __tablename__ = "sinking_funds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    current_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    monthly_contribution: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    category_group: Mapped[str] = mapped_column(String(20), default="needs")
+    is_rolling: Mapped[bool] = mapped_column(Boolean, default=False)
+    linked_category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    linked_category: Mapped["Category | None"] = relationship()
+    contributions: Mapped[list["SinkingFundContribution"]] = relationship(
+        back_populates="fund", cascade="all, delete-orphan"
+    )
+
+
+class SinkingFundContribution(Base):
+    __tablename__ = "sinking_fund_contributions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fund_id: Mapped[int] = mapped_column(ForeignKey("sinking_funds.id"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    fund: Mapped["SinkingFund"] = relationship(back_populates="contributions")
+
+
+class IncomeAllocation(Base):
+    __tablename__ = "income_allocations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    income_tx_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), nullable=False)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    fund_id: Mapped[int | None] = mapped_column(ForeignKey("sinking_funds.id"), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    allocated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    allocation_level: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    income_tx: Mapped["Transaction"] = relationship(back_populates="allocations")
+    category: Mapped["Category | None"] = relationship()
+    fund: Mapped["SinkingFund | None"] = relationship()
 
 
 class Transaction(Base):
@@ -41,10 +90,18 @@ class Transaction(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("app_users.id"), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     base_amount_eur: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    exchange_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    is_fully_allocated: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_sinking_fund_spend: Mapped[bool] = mapped_column(Boolean, default=False)
+    fund_id: Mapped[int | None] = mapped_column(ForeignKey("sinking_funds.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
     user: Mapped["AppUser | None"] = relationship(back_populates="transactions")
+    fund: Mapped["SinkingFund | None"] = relationship()
+    allocations: Mapped[list["IncomeAllocation"]] = relationship(
+        back_populates="income_tx", cascade="all, delete-orphan"
+    )
 
 
 class MonthlyPlan(Base):
@@ -55,6 +112,8 @@ class MonthlyPlan(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     expected_income: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     limits: Mapped[list["CategoryLimit"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"
@@ -101,6 +160,7 @@ class CategoryLimit(Base):
     plan_id: Mapped[int] = mapped_column(ForeignKey("monthly_plans.id"), nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     limit_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    carried_over: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
 
     plan: Mapped["MonthlyPlan"] = relationship(back_populates="limits")
     category: Mapped["Category"] = relationship(back_populates="limits")
@@ -121,6 +181,7 @@ class Debt(Base):
     grace_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     next_payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     payments: Mapped[list["DebtPayment"]] = relationship(
         back_populates="debt", cascade="all, delete-orphan"
@@ -149,8 +210,10 @@ class Goal(Base):
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     monthly_contribution: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     linked_account_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    linked_category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    linked_category: Mapped["Category | None"] = relationship()
     contributions: Mapped[list["GoalContribution"]] = relationship(
         back_populates="goal", cascade="all, delete-orphan"
     )

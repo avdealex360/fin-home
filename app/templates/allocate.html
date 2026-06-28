@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Распределение дохода — Семейный бюджет{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Распределить доход</h1>
+<p class="text-slate-600 mb-6">
+    Получили: <strong>{{ income_amount | money }} ₽</strong>
+    {% if tx.base_amount_eur %} (€{{ tx.base_amount_eur }}){% endif %}
+    · {{ tx.date.strftime('%d.%m.%Y') }}
+</p>
+
+<form method="post" action="/allocate/{{ tx.id }}" class="space-y-6">
+    {% set running = income_amount %}
+    {% for level in levels %}
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+        <h2 class="font-semibold text-lg mb-1">Уровень {{ level.level }}: {{ level.label }}</h2>
+        <p class="text-sm text-slate-500 mb-3">Предложено: {{ level.total_suggested | money }} ₽</p>
+        <div class="space-y-2">
+            {% for item in level.items %}
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                <label class="flex-1 text-sm">{{ item.name }}</label>
+                <input type="text"
+                    name="{% if item.kind == 'fund' %}fund_{{ item.id }}{% else %}cat_{{ item.id }}_{{ item.allocation_level }}{% endif %}"
+                    value="{{ item.suggested_amount | money | replace(' ', '') }}"
+                    class="p-2 border rounded-lg w-full sm:w-32 text-right"
+                    inputmode="decimal">
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+        <p class="font-medium">Цель: нераспределено = 0 ₽</p>
+        <p class="text-sm text-slate-600">Сейчас нераспределено: {{ unallocated | money }} ₽</p>
+    </div>
+
+    <button type="submit" class="btn-primary w-full">Сохранить распределение</button>
+    <a href="/" class="block text-center text-sm text-slate-500 mt-2">Пропустить (распределить позже)</a>
+</form>
+{% endblock %}

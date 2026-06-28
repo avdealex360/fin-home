@@ -160,6 +160,17 @@ def add_planned_debt(
     return RedirectResponse(f"/plan/{year}/{month}?saved=1", status_code=303)
 
 
+@router.post("/{year}/{month}/close")
+def close_month_route(year: int, month: int, db: Session = Depends(get_db)):
+    from app.services.allocation import close_month
+
+    try:
+        close_month(db, year, month)
+    except ValueError:
+        return RedirectResponse(f"/plan/{year}/{month}?error=close", status_code=303)
+    return RedirectResponse(f"/plan/{year}/{month}?closed=1", status_code=303)
+
+
 @router.post("/planned-expense/{expense_id}/delete")
 def delete_planned_expense(expense_id: int, db: Session = Depends(get_db)):
     from app.models import PlannedExpense

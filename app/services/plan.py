@@ -10,7 +10,7 @@ from app.services.deposit_calc import (
     parse_rate_schedule,
     required_monthly_contribution,
 )
-from app.services.dashboard import get_setting, set_setting
+from app.services.settings_store import get_setting, set_setting
 
 
 class PlanService:

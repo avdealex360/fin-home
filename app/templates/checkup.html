@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Ежеквартальный чекап{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Ежеквартальный чекап</h1>
+<p class="text-slate-600 mb-6">{{ today.strftime('%d.%m.%Y') }} — пересмотрите систему бюджета</p>
+
+<section class="mb-8">
+    <h2 class="text-lg font-semibold mb-3">Копилки</h2>
+    {% for fund in funds %}
+    <div class="bg-white rounded-xl p-3 border mb-2 text-sm">
+        <strong>{{ fund.name }}</strong>: {{ fund.current_amount | money }}/{{ fund.target_amount | money }} ₽,
+        взнос {{ fund.monthly_contribution | money }} ₽/мес
+    </div>
+    {% endfor %}
+    <a href="/funds" class="text-indigo-600 text-sm">Управление копилками →</a>
+</section>
+
+<section class="mb-8">
+    <h2 class="text-lg font-semibold mb-3">Цели</h2>
+    {% for goal in goals %}
+    <div class="bg-white rounded-xl p-3 border mb-2 text-sm">
+        {{ goal.name }}: {{ goal.current_amount | money }}/{{ goal.target_amount | money }} ₽
+        {% if goal.deadline %} · до {{ goal.deadline.strftime('%d.%m.%Y') }}{% endif %}
+    </div>
+    {% endfor %}
+</section>
+
+<section class="mb-8">
+    <h2 class="text-lg font-semibold mb-3">Вклад</h2>
+    <p class="text-sm">Ставка: {{ deposit_rate }}% · EUR/RUB: {{ eur_rub_rate }}</p>
+    <a href="/deposit" class="text-indigo-600 text-sm">Обновить вклад →</a>
+</section>
+
+{% if cascade and cascade[0] is not none %}
+<section class="mb-8 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+    <h2 class="font-semibold mb-2">Каскад после Сплита</h2>
+    <p class="text-sm">Текущий взнос в подушку → {{ cascade[0] or '—' }} мес до цели</p>
+    <p class="text-sm">С увеличенным взносом → {{ cascade[1] or '—' }} мес</p>
+</section>
+{% endif %}
+
+<section class="mb-8">
+    <h2 class="text-lg font-semibold mb-3">Стоимость долгов</h2>
+    {% for cost in debt_costs %}
+    <div class="bg-white rounded-xl p-4 border mb-3">
+        <div class="font-medium">{{ cost.name }} — {{ cost.remaining | money }} ₽ @ {{ cost.interest_rate }}%</div>
+        {% for s in cost.scenarios %}
+        <p class="text-sm text-slate-600 mt-1">
+            {{ s.label }} ({{ s.monthly_payment | money }} ₽): {{ s.months_to_close }} мес,
+            переплата {{ s.total_interest | money }} ₽
+        </p>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</section>
+{% endblock %}

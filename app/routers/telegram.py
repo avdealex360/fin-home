@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.models import Category, Transaction
 from app.services.dashboard import DashboardService
+from app.services.sinking_funds import SinkingFundService
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -55,8 +56,9 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             chat_id,
             "Команды:\n"
             "/add 1500 продукты — добавить расход\n"
-            "/income 50000 — добавить доход\n"
-            "/balance — баланс месяца",
+            "/income 50000 — добавить доход (откроется распределение)\n"
+            "/balance — баланс месяца\n"
+            "/funds — статус копилок",
         )
         return {"ok": True}
 
@@ -67,8 +69,22 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             chat_id,
             f"Доход: {summary.income_fact:,.0f} ₽\n"
             f"Потрачено: {summary.total_spent:,.0f} ₽\n"
+            f"Нераспределено: {summary.unallocated:,.0f} ₽\n"
             f"Остаток: {summary.remaining:,.0f} ₽".replace(",", " "),
         )
+        return {"ok": True}
+
+    if text.startswith("/funds"):
+        summaries = SinkingFundService.get_summaries(db)
+        if not summaries:
+            await _send_message(chat_id, "Копилки не настроены.")
+            return {"ok": True}
+        lines = []
+        for f in summaries:
+            lines.append(
+                f"{f.name}: {f.current_amount:,.0f}/{f.target_amount:,.0f} ₽".replace(",", " ")
+            )
+        await _send_message(chat_id, "Копилки:\n" + "\n".join(lines))
         return {"ok": True}
 
     add_match = re.match(r"^/add\s+([\d\s.,]+)\s+(.+)$", text, re.IGNORECASE)
@@ -104,10 +120,14 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
         except InvalidOperation:
             await _send_message(chat_id, "Неверная сумма.")
             return {"ok": True}
-        tx = Transaction(type="income", amount=amount, date=date.today(), comment="Telegram")
+        tx = Transaction(type="income", amount=amount, date=date.today(), comment="Telegram", is_fully_allocated=False)
         db.add(tx)
         db.commit()
-        await _send_message(chat_id, f"Доход {amount:,.0f} ₽ добавлен.".replace(",", " "))
+        base_url = settings.app_base_url or "http://localhost:8000"
+        await _send_message(
+            chat_id,
+            f"Доход {amount:,.0f} ₽ добавлен.\nРаспределить: {base_url}/allocate/{tx.id}".replace(",", " "),
+        )
         return {"ok": True}
 
     await _send_message(chat_id, "Неизвестная команда. /help")

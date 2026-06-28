@@ -7,7 +7,19 @@ from fastapi.staticfiles import StaticFiles
 from app.db import SessionLocal
 from app.middleware.auth import BasicAuthMiddleware
 from app.migrations import run_migrations
-from app.routers import analytics, dashboard, deposit, goals, plan, settings, telegram, transactions
+from app.routers import (
+    allocation,
+    analytics,
+    checkup,
+    dashboard,
+    deposit,
+    goals,
+    plan,
+    settings,
+    sinking_funds,
+    telegram,
+    transactions,
+)
 from app.seed import seed_database
 
 DATA_DIR = Path("./data")
@@ -33,9 +45,12 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(dashboard.router)
 app.include_router(transactions.router)
+app.include_router(allocation.router)
+app.include_router(sinking_funds.router)
 app.include_router(plan.router)
 app.include_router(analytics.router)
 app.include_router(deposit.router)
 app.include_router(goals.router)
+app.include_router(checkup.router)
 app.include_router(settings.router)
 app.include_router(telegram.router)

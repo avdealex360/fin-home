@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import DepositSnapshot, Goal
-from app.services.dashboard import get_setting, set_setting
+from app.services.settings_store import get_setting, set_setting
 from app.services.plan import DepositService
 from app.templates_config import templates
 
