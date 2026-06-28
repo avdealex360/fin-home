@@ -1,0 +1,8 @@
+194.154.29.93 {
+	tls internal
+	reverse_proxy budget-app:8000
+}
+
+http://194.154.29.93 {
+	redir https://{host}{uri}
+}

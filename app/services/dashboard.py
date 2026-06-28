@@ -57,6 +57,7 @@ class MonthSummary:
     savings_rate: float
     savings_target_rate: float = 20.0
     deposit_balance: Decimal = Decimal("0")
+    income_eur: Decimal = Decimal("0")
     groups: list[GroupSummary] = field(default_factory=list)
     debts: list[DebtSummary] = field(default_factory=list)
     goals: list[GoalSummary] = field(default_factory=list)
@@ -135,6 +136,10 @@ class DashboardService:
         remaining = income_fact - total_spent
         deposit_balance = Decimal(get_setting(db, "deposit_balance", "0"))
 
+        from app.services.exchange import income_eur_total
+
+        income_eur = income_eur_total(db, year, month)
+
         groups = []
         for group_name, percent in GROUP_PERCENTS.items():
             group_limit = DashboardService._group_limit(db, plan, group_name, income_plan, percent)
@@ -208,6 +213,7 @@ class DashboardService:
             remaining=remaining,
             savings_rate=savings_rate,
             deposit_balance=deposit_balance,
+            income_eur=income_eur,
             groups=groups,
             debts=debts,
             goals=goals,

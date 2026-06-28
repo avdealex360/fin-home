@@ -181,6 +181,35 @@ class AnalyticsService:
         return date(y, m, 1)
 
     @staticmethod
+    def cumulative_trends(db: Session, months: int = 12) -> list[dict]:
+        trends = AnalyticsService.monthly_trends(db, months)
+        cum_income = Decimal("0")
+        cum_expense = Decimal("0")
+        cum_savings = Decimal("0")
+        result = []
+        for t in trends:
+            cum_income += t.income
+            cum_expense += t.expense
+            cum_savings += t.savings
+            result.append(
+                {
+                    "label": f"{t.year}-{t.month:02d}",
+                    "income": float(cum_income),
+                    "expense": float(cum_expense),
+                    "savings": float(cum_savings),
+                }
+            )
+        return result
+
+    @staticmethod
+    def category_average(db: Session, category_id: int, months: int = 6) -> Decimal:
+        history = AnalyticsService.category_history(db, category_id, months)
+        if not history:
+            return Decimal("0")
+        total = sum(amount for _, _, amount in history)
+        return (total / len(history)).quantize(Decimal("0.01"))
+
+    @staticmethod
     def debt_payments(db: Session, debt_id: int) -> list[DebtPayment]:
         return (
             db.query(DebtPayment)

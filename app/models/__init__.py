@@ -59,6 +59,38 @@ class MonthlyPlan(Base):
     limits: Mapped[list["CategoryLimit"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"
     )
+    planned_expenses: Mapped[list["PlannedExpense"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan"
+    )
+    planned_debt_payments: Mapped[list["PlannedDebtPayment"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan"
+    )
+
+
+class PlannedExpense(Base):
+    __tablename__ = "planned_expenses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("monthly_plans.id"), nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    expected_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    plan: Mapped["MonthlyPlan"] = relationship(back_populates="planned_expenses")
+    category: Mapped["Category | None"] = relationship()
+
+
+class PlannedDebtPayment(Base):
+    __tablename__ = "planned_debt_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("monthly_plans.id"), nullable=False)
+    debt_id: Mapped[int] = mapped_column(ForeignKey("debts.id"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    plan: Mapped["MonthlyPlan"] = relationship(back_populates="planned_debt_payments")
+    debt: Mapped["Debt"] = relationship()
 
 
 class CategoryLimit(Base):

@@ -35,12 +35,14 @@ def save_general(
     user2_name: str = Form(...),
     currency: str = Form("RUB"),
     eur_usd_rate: str = Form("1.08"),
+    eur_rub_rate: str = Form("100"),
     db: Session = Depends(get_db),
 ):
     set_setting(db, "user1_name", user1_name)
     set_setting(db, "user2_name", user2_name)
     set_setting(db, "currency", currency)
     set_setting(db, "eur_usd_rate", eur_usd_rate)
+    set_setting(db, "eur_rub_rate", eur_rub_rate)
 
     from app.models import AppUser
 
@@ -118,6 +120,47 @@ def close_debt(debt_id: int, db: Session = Depends(get_db)):
     return RedirectResponse("/settings", status_code=303)
 
 
+@router.post("/debts/{debt_id}/payment")
+def record_debt_payment(
+    debt_id: int,
+    amount: str = Form(...),
+    date_str: str = Form(..., alias="date"),
+    comment: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.models import DebtPayment
+
+    debt = db.query(Debt).filter(Debt.id == debt_id).first()
+    if not debt:
+        return RedirectResponse("/settings", status_code=303)
+    try:
+        amt = Decimal(amount.replace(",", ".").replace(" ", ""))
+    except Exception:
+        return RedirectResponse("/settings?error=1", status_code=303)
+
+    db.add(
+        DebtPayment(
+            debt_id=debt_id,
+            amount=amt,
+            date=date.fromisoformat(date_str),
+            comment=comment or None,
+        )
+    )
+    debt.remaining = max(Decimal("0"), debt.remaining - amt)
+    if debt.remaining <= 0:
+        debt.is_closed = True
+    db.commit()
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@router.post("/fetch-eur-rate")
+async def fetch_eur_rate(db: Session = Depends(get_db)):
+    from app.services.exchange import fetch_eur_usd_rate, update_eur_usd_rate
+
+    await update_eur_usd_rate(db)
+    return RedirectResponse("/settings?rate_updated=1", status_code=303)
+
+
 @router.get("/export/json")
 def export_json(db: Session = Depends(get_db)):
     data = {
@@ -129,6 +172,7 @@ def export_json(db: Session = Depends(get_db)):
                 "date": t.date.isoformat(),
                 "category_id": t.category_id,
                 "comment": t.comment,
+                "base_amount_eur": str(t.base_amount_eur) if t.base_amount_eur else None,
             }
             for t in db.query(Transaction).all()
         ],
@@ -158,10 +202,13 @@ def export_json(db: Session = Depends(get_db)):
 def export_csv(db: Session = Depends(get_db)):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "type", "amount", "date", "category", "comment"])
+    writer.writerow(["id", "type", "amount", "date", "category", "comment", "base_amount_eur"])
     for t in db.query(Transaction).order_by(Transaction.date).all():
         cat_name = t.category.name if t.category else ""
-        writer.writerow([t.id, t.type, str(t.amount), t.date.isoformat(), cat_name, t.comment or ""])
+        writer.writerow([
+            t.id, t.type, str(t.amount), t.date.isoformat(), cat_name,
+            t.comment or "", str(t.base_amount_eur) if t.base_amount_eur else "",
+        ])
     content = output.getvalue()
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8-sig")),

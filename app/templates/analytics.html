@@ -6,10 +6,16 @@
 
 <h1 class="text-2xl font-bold mb-6">Аналитика</h1>
 
-<form method="get" class="flex gap-2 mb-6">
-    <input type="number" name="year" value="{{ year }}" class="p-2 border rounded-lg w-24">
-    <input type="number" name="month" value="{{ month }}" min="1" max="12" class="p-2 border rounded-lg w-20">
-    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Показать</button>
+<form method="get" class="space-y-3 mb-6 mobile-stack flex flex-col sm:flex-row sm:items-end sm:gap-2">
+    <div>
+        <label class="text-sm text-slate-600 block mb-1">Год</label>
+        <input type="number" name="year" value="{{ year }}" class="p-3 border rounded-xl w-full sm:w-24">
+    </div>
+    <div>
+        <label class="text-sm text-slate-600 block mb-1">Месяц</label>
+        <input type="number" name="month" value="{{ month }}" min="1" max="12" class="p-3 border rounded-xl w-full sm:w-20">
+    </div>
+    <button type="submit" class="btn-primary sm:w-auto sm:min-w-[8rem]">Показать</button>
 </form>
 
 <h2 class="text-lg font-semibold mb-3">План vs факт — {{ month_name(month) }} {{ year }}</h2>
@@ -52,6 +58,9 @@
 <h2 class="text-lg font-semibold mb-3">Динамика по месяцам</h2>
 <canvas id="trendsChart" height="200" class="mb-8 bg-white rounded-xl p-4 border"></canvas>
 
+<h2 class="text-lg font-semibold mb-3">Накопительно за 12 месяцев</h2>
+<canvas id="cumChart" height="200" class="mb-8 bg-white rounded-xl p-4 border"></canvas>
+
 <h2 class="text-lg font-semibold mb-3">Долги</h2>
 {% for item in debts %}
 <div class="bg-white rounded-xl p-4 border border-slate-100 mb-3">
@@ -68,10 +77,10 @@
 </div>
 {% endfor %}
 
-<form method="get" class="mt-8 flex gap-2 items-end">
+<form method="get" class="mt-8 space-y-3">
     <div>
-        <label class="text-sm text-slate-600">Динамика категории</label>
-        <select name="category_id" class="block p-2 border rounded-lg">
+        <label class="text-sm text-slate-600 block mb-1">Динамика категории</label>
+        <select name="category_id" class="w-full p-3 border rounded-xl bg-white">
             <option value="">— выберите —</option>
             {% for cat in categories %}
             <option value="{{ cat.id }}" {% if category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
@@ -80,11 +89,12 @@
     </div>
     <input type="hidden" name="year" value="{{ year }}">
     <input type="hidden" name="month" value="{{ month }}">
-    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Показать</button>
+    <button type="submit" class="btn-primary">Показать категорию</button>
 </form>
 
 {% if cat_history %}
-<canvas id="catChart" height="150" class="mt-4 bg-white rounded-xl p-4 border"></canvas>
+<div class="mt-4 mb-2 text-sm text-slate-600">Средний расход за 6 мес.: <strong>{{ cat_average | money }} ₽</strong></div>
+<canvas id="catChart" height="150" class="bg-white rounded-xl p-4 border"></canvas>
 {% endif %}
 
 <script>
@@ -96,6 +106,19 @@ new Chart(document.getElementById('trendsChart'), {
             { label: 'Доход', data: {{ chart_income | tojson }}, borderColor: '#22c55e' },
             { label: 'Расход', data: {{ chart_expense | tojson }}, borderColor: '#ef4444' },
             { label: 'Сбережения', data: {{ chart_savings | tojson }}, borderColor: '#6366f1' },
+        ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+});
+
+new Chart(document.getElementById('cumChart'), {
+    type: 'line',
+    data: {
+        labels: {{ cum_labels | tojson }},
+        datasets: [
+            { label: 'Доход ∑', data: {{ cum_income | tojson }}, borderColor: '#22c55e', borderDash: [5, 5] },
+            { label: 'Расход ∑', data: {{ cum_expense | tojson }}, borderColor: '#ef4444', borderDash: [5, 5] },
+            { label: 'Сбережения ∑', data: {{ cum_savings | tojson }}, borderColor: '#6366f1', borderDash: [5, 5] },
         ]
     },
     options: { responsive: true, plugins: { legend: { position: 'bottom' } } }

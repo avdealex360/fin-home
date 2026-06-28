@@ -17,6 +17,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     today = date.today()
     summary = DashboardService.get_month_summary(db, today.year, today.month)
     advice = RuleEngine.evaluate(db, today.year, today.month)
+    RuleEngine.mark_shown(db, advice)
 
     from app.models import AppUser, Category, Transaction
 
@@ -32,6 +33,8 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .order_by(Category.sort_order)
         .all()
     )
+    expense_categories = [c for c in categories if c.group != "income"]
+    income_categories = [c for c in categories if c.group == "income"]
     users = db.query(AppUser).filter(AppUser.is_active.is_(True)).all()
 
     return templates.TemplateResponse(
@@ -41,7 +44,9 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "summary": summary,
             "advice": advice,
             "recent": recent,
-            "categories": categories,
+            "categories": expense_categories,
+            "income_categories": income_categories,
+            "all_categories": categories,
             "users": users,
             "today": today.isoformat(),
         },

@@ -11,12 +11,14 @@
 </div>
 {% endif %}
 
-<!-- Summary panel -->
-<div class="grid grid-cols-2 gap-3 mb-6">
+<div class="grid grid-cols-2 gap-3 mb-6 mobile-grid-1 sm:grid-cols-2">
     <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
         <div class="text-xs text-slate-500 uppercase">Доход</div>
         <div class="text-xl font-bold">{{ summary.income_fact | money }} ₽</div>
         <div class="text-sm text-slate-500">план: {{ summary.income_plan | money }} ₽</div>
+        {% if summary.income_eur > 0 %}
+        <div class="text-xs text-indigo-600 mt-1">≈ {{ summary.income_eur | money }} €</div>
+        {% endif %}
     </div>
     <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
         <div class="text-xs text-slate-500 uppercase">Потрачено</div>
@@ -33,9 +35,13 @@
         <div class="text-xl font-bold">{{ "%.0f"|format(summary.savings_rate) }}%</div>
         <div class="text-sm text-slate-500">цель: 20%</div>
     </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 sm:col-span-2">
+        <div class="text-xs text-slate-500 uppercase">Вклад</div>
+        <div class="text-xl font-bold">{{ summary.deposit_balance | money }} ₽</div>
+        <a href="/deposit" class="text-sm text-indigo-600 mt-1 inline-block py-1">Подробнее →</a>
+    </div>
 </div>
 
-<!-- Advice -->
 {% if advice %}
 <div class="mb-6 space-y-2">
     {% for item in advice %}
@@ -50,7 +56,6 @@
 </div>
 {% endif %}
 
-<!-- 50/30/20 blocks -->
 <div class="space-y-4 mb-6">
     {% for group in summary.groups %}
     <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
@@ -59,10 +64,7 @@
             <span class="text-sm text-slate-500">{{ "%.0f"|format(group.usage_percent) }}%</span>
         </div>
         <div class="w-full bg-slate-100 rounded-full h-3 mb-2">
-            <div class="h-3 rounded-full
-                {% if group.color == 'green' %}bg-green-500
-                {% elif group.color == 'yellow' %}bg-yellow-500
-                {% else %}bg-red-500{% endif %}"
+            <div class="h-3 rounded-full {% if group.color == 'green' %}bg-green-500{% elif group.color == 'yellow' %}bg-yellow-500{% else %}bg-red-500{% endif %}"
                 style="width: {{ [group.usage_percent, 100]|min }}%"></div>
         </div>
         <div class="flex justify-between text-sm text-slate-600">
@@ -73,7 +75,6 @@
     {% endfor %}
 </div>
 
-<!-- Debts -->
 <div class="mb-6">
     <h2 class="text-lg font-semibold mb-3">Долги</h2>
     <div class="space-y-3">
@@ -84,84 +85,63 @@
                 <span class="font-medium">{{ debt.name }}</span>
                 <span>{{ debt.remaining | money }} ₽</span>
             </div>
-            <div class="w-full bg-slate-100 rounded-full h-2 mb-2">
+            <div class="w-full bg-slate-100 rounded-full h-2">
                 <div class="h-2 rounded-full bg-indigo-500" style="width: {{ debt.progress_percent }}%"></div>
             </div>
-            {% if debt.grace_period_end %}
-            <div class="text-xs text-slate-500">Льготный период до {{ debt.grace_period_end.strftime('%d.%m.%Y') }}</div>
-            {% endif %}
-            {% if debt.next_payment_date %}
-            <div class="text-xs text-slate-500">След. платёж: {{ debt.next_payment_date.strftime('%d.%m.%Y') }}</div>
-            {% endif %}
         </div>
         {% endif %}
         {% endfor %}
     </div>
 </div>
 
-<!-- Goals -->
-<div class="mb-6">
-    <h2 class="text-lg font-semibold mb-3">Цели</h2>
-    <div class="space-y-3">
-        {% for goal in summary.goals %}
-        {% if goal.target_amount > 0 %}
-        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div class="flex justify-between mb-2">
-                <span class="font-medium">{{ goal.name }}</span>
-                <span>{{ goal.current_amount | money }} / {{ goal.target_amount | money }} ₽</span>
-            </div>
-            <div class="w-full bg-slate-100 rounded-full h-2">
-                <div class="h-2 rounded-full bg-emerald-500" style="width: {{ [goal.progress_percent, 100]|min }}%"></div>
-            </div>
-            {% if goal.months_to_goal %}
-            <div class="text-xs text-slate-500 mt-1">~{{ goal.months_to_goal }} мес. при текущем темпе</div>
-            {% endif %}
-        </div>
-        {% endif %}
-        {% endfor %}
-    </div>
-</div>
-
-<!-- Quick add form -->
+<!-- Компактная форма: доход и мелкие траты (крупные — в Плане) -->
 <div class="mb-6 bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-    <h2 class="text-lg font-semibold mb-3">Быстрая операция</h2>
+    <h2 class="text-lg font-semibold mb-1">Быстрая запись</h2>
+    <p class="text-sm text-slate-500 mb-3">Крупные расходы — в <a href="/plan/{{ summary.year }}/{{ summary.month }}" class="text-indigo-600 underline">Плане</a></p>
     <form hx-post="/transactions/quick" hx-target="#recent-list" hx-swap="innerHTML" class="space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-            <select name="type" class="w-full p-3 text-lg border rounded-xl bg-white" required>
-                <option value="expense">Расход</option>
-                <option value="income">Доход</option>
-                <option value="transfer">В сбережения</option>
-            </select>
-            <input type="text" name="amount" inputmode="decimal" placeholder="Сумма" required
-                class="w-full p-3 text-lg border rounded-xl">
-        </div>
-        <select name="category_id" class="w-full p-3 text-lg border rounded-xl bg-white">
-            <option value="">— Категория —</option>
-            {% for cat in categories %}
-            <option value="{{ cat.id }}">{{ cat.name }}</option>
-            {% endfor %}
+        <select name="type" id="quick-type" class="w-full p-3 border rounded-xl bg-white" required>
+            <option value="expense">Расход</option>
+            <option value="income">Доход</option>
+            <option value="transfer">В сбережения</option>
         </select>
-        <div class="grid grid-cols-2 gap-3">
-            <input type="date" name="date" value="{{ today }}" class="w-full p-3 text-lg border rounded-xl">
-            <select name="user_id" class="w-full p-3 text-lg border rounded-xl bg-white">
-                <option value="">— Кто —</option>
-                {% for u in users %}
-                <option value="{{ u.id }}">{{ u.name }}</option>
+        <input type="text" name="amount" inputmode="decimal" placeholder="Сумма, ₽" required
+            class="w-full p-3 border rounded-xl" enterkeyhint="done">
+        <select name="category_id" class="w-full p-3 border rounded-xl bg-white">
+            <option value="">— Категория —</option>
+            <optgroup label="Расходы" id="expense-cats">
+                {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
                 {% endfor %}
-            </select>
+            </optgroup>
+            <optgroup label="Доходы" id="income-cats" class="hidden">
+                {% for cat in income_categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                {% endfor %}
+            </optgroup>
+        </select>
+        <div id="eur-field" class="hidden">
+            <input type="text" name="base_amount_eur" inputmode="decimal" placeholder="Сумма в EUR"
+                class="w-full p-3 border rounded-xl" enterkeyhint="done">
         </div>
-        <input type="text" name="comment" placeholder="Комментарий" class="w-full p-3 text-lg border rounded-xl">
-        <button type="submit" class="w-full p-4 text-lg font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
-            Добавить
-        </button>
+        <input type="date" name="date" value="{{ today }}" class="w-full p-3 border rounded-xl">
+        <input type="text" name="comment" placeholder="Комментарий" class="w-full p-3 border rounded-xl" enterkeyhint="done">
+        <button type="submit" class="btn-primary">Сохранить операцию</button>
     </form>
 </div>
 
-<!-- Recent transactions -->
-<div>
+<div class="mb-6">
     <h2 class="text-lg font-semibold mb-3">Последние операции</h2>
     <div id="recent-list">
         {% include "partials/recent_transactions.html" %}
     </div>
 </div>
+
+<script>
+document.getElementById('quick-type')?.addEventListener('change', function() {
+    const isIncome = this.value === 'income';
+    document.getElementById('eur-field')?.classList.toggle('hidden', !isIncome);
+    document.getElementById('expense-cats')?.classList.toggle('hidden', isIncome);
+    document.getElementById('income-cats')?.classList.toggle('hidden', !isIncome);
+});
+</script>
 {% endblock %}

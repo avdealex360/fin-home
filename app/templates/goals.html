@@ -22,12 +22,12 @@
                     style="width: {{ (goal.current_amount / goal.target_amount * 100)|float|round(1) if goal.target_amount > 0 else 0 }}%"></div>
             </div>
             {% endif %}
-            <button type="submit" class="text-sm text-indigo-600">Сохранить</button>
+            <button type="submit" class="btn-primary">Сохранить цель</button>
         </form>
-        <form method="post" action="/goals/{{ goal.id }}/contribute" class="flex gap-2 mt-2">
-            <input type="text" name="amount" placeholder="+ сумма" class="flex-1 p-2 border rounded-lg">
-            <input type="date" name="date" value="{{ today if today is defined else '' }}" class="p-2 border rounded-lg">
-            <button type="submit" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm">+</button>
+        <form method="post" action="/goals/{{ goal.id }}/contribute" class="space-y-2 mt-3 pt-3 border-t">
+            <input type="text" name="amount" inputmode="decimal" placeholder="Пополнение, ₽" class="w-full p-3 border rounded-xl">
+            <input type="date" name="date" value="{{ today if today is defined else '' }}" class="w-full p-3 border rounded-xl">
+            <button type="submit" class="btn-secondary">Добавить пополнение</button>
         </form>
     </div>
     {% endfor %}
@@ -39,6 +39,6 @@
     <input type="text" name="target_amount" placeholder="Целевая сумма" class="w-full p-3 border rounded-xl" required>
     <input type="text" name="monthly_contribution" placeholder="Ежемесячный взнос" class="w-full p-3 border rounded-xl">
     <input type="date" name="deadline" class="w-full p-3 border rounded-xl">
-    <button type="submit" class="w-full p-3 bg-indigo-600 text-white rounded-xl">Создать</button>
+    <button type="submit" class="btn-primary">Создать цель</button>
 </form>
 {% endblock %}

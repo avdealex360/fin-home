@@ -5,6 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.models import Category, CategoryLimit, MonthlyPlan
 from app.seed import GROUP_PERCENTS
+from app.services.deposit_calc import (
+    build_forecast,
+    parse_rate_schedule,
+    required_monthly_contribution,
+)
 from app.services.dashboard import get_setting, set_setting
 
 
@@ -32,7 +37,12 @@ class PlanService:
         plan.expected_income = expected_income
 
         if auto_distribute and expected_income > 0:
-            categories = db.query(Category).filter(Category.is_hidden.is_(False)).order_by(Category.sort_order).all()
+            categories = (
+                db.query(Category)
+                .filter(Category.is_hidden.is_(False), Category.group.in_(["needs", "wants", "savings"]))
+                .order_by(Category.sort_order)
+                .all()
+            )
             by_group: dict[str, list[Category]] = {}
             for cat in categories:
                 by_group.setdefault(cat.group, []).append(cat)
@@ -67,16 +77,82 @@ class PlanService:
             .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
             .first()
         )
-        categories = db.query(Category).filter(Category.is_hidden.is_(False)).order_by(Category.sort_order).all()
+        categories = (
+            db.query(Category)
+            .filter(Category.is_hidden.is_(False), Category.group.in_(["needs", "wants", "savings"]))
+            .order_by(Category.sort_order)
+            .all()
+        )
         return plan, categories
+
+    @staticmethod
+    def add_planned_expense(
+        db: Session,
+        plan_id: int,
+        description: str,
+        amount: Decimal,
+        category_id: int | None = None,
+        expected_date: date | None = None,
+    ) -> None:
+        from app.models import PlannedExpense
+
+        db.add(
+            PlannedExpense(
+                plan_id=plan_id,
+                description=description,
+                amount=amount,
+                category_id=category_id,
+                expected_date=expected_date,
+            )
+        )
+        db.commit()
+
+    @staticmethod
+    def add_planned_debt_payment(db: Session, plan_id: int, debt_id: int, amount: Decimal) -> None:
+        from app.models import PlannedDebtPayment
+
+        db.add(PlannedDebtPayment(plan_id=plan_id, debt_id=debt_id, amount=amount))
+        db.commit()
+
+    @staticmethod
+    def delete_planned_expense(db: Session, expense_id: int) -> None:
+        from app.models import PlannedExpense
+
+        item = db.query(PlannedExpense).filter(PlannedExpense.id == expense_id).first()
+        if item:
+            db.delete(item)
+            db.commit()
+
+    @staticmethod
+    def delete_planned_debt_payment(db: Session, payment_id: int) -> None:
+        from app.models import PlannedDebtPayment
+
+        item = db.query(PlannedDebtPayment).filter(PlannedDebtPayment.id == payment_id).first()
+        if item:
+            db.delete(item)
+            db.commit()
 
 
 class DepositService:
     @staticmethod
-    def get_current(db: Session) -> tuple[Decimal, Decimal]:
+    def get_settings(db: Session) -> dict:
         balance = Decimal(get_setting(db, "deposit_balance", "0"))
         rate = Decimal(get_setting(db, "deposit_rate", "17.5"))
-        return balance, rate
+        cap_day = int(get_setting(db, "deposit_cap_day", "18") or "18")
+        start = get_setting(db, "deposit_start_date", "")
+        schedule_raw = get_setting(db, "deposit_rate_schedule", "")
+        return {
+            "balance": balance,
+            "rate": rate,
+            "cap_day": cap_day,
+            "start_date": date.fromisoformat(start) if start else None,
+            "rate_schedule": parse_rate_schedule(schedule_raw, rate),
+        }
+
+    @staticmethod
+    def get_current(db: Session) -> tuple[Decimal, Decimal]:
+        s = DepositService.get_settings(db)
+        return s["balance"], s["rate"]
 
     @staticmethod
     def update(db: Session, balance: Decimal, rate: Decimal) -> None:
@@ -90,22 +166,70 @@ class DepositService:
         monthly_contribution: Decimal,
         target_date: date,
         start_date: date | None = None,
+        rate_schedule: list | None = None,
+        capitalization_day: int | None = None,
+        initial_lump_sum: Decimal = Decimal("0"),
     ) -> list[tuple[date, Decimal]]:
         start = start_date or date.today()
-        monthly_rate = rate / Decimal("100") / Decimal("12")
-        current = balance
-        points: list[tuple[date, Decimal]] = [(start, current)]
-        d = start
-        while d <= target_date:
-            m = d.month + 1
-            y = d.year
-            if m > 12:
-                m = 1
-                y += 1
-            d = date(y, m, 1)
-            current = current * (1 + monthly_rate) + monthly_contribution
-            points.append((d, current.quantize(Decimal("0.01"))))
-        return points
+        rows = build_forecast(
+            start,
+            balance,
+            rate,
+            target_date,
+            monthly_contribution,
+            initial_lump_sum=initial_lump_sum,
+            rate_schedule=rate_schedule,
+            capitalization_day=capitalization_day,
+        )
+        return [(r.date, r.balance_after) for r in rows]
+
+    @staticmethod
+    def forecast_detailed(
+        db: Session,
+        monthly_contribution: Decimal,
+        target_date: date,
+    ) -> list:
+        s = DepositService.get_settings(db)
+        start = s["start_date"] or date.today()
+        initial_lump = Decimal(get_setting(db, "deposit_initial_lump", "0") or "0")
+        # Таблица как в Excel: от даты открытия, стартовый остаток 0, разовый взнос в 1-й месяц
+        return build_forecast(
+            start,
+            Decimal("0"),
+            s["rate"],
+            target_date,
+            monthly_contribution,
+            initial_lump_sum=initial_lump,
+            rate_schedule=s["rate_schedule"],
+            capitalization_day=s["cap_day"],
+        )
+
+    @staticmethod
+    def forecast_forward(
+        db: Session,
+        monthly_contribution: Decimal,
+        target_date: date,
+    ) -> list:
+        """Прогноз вперёд от текущего баланса (следующая дата капитализации)."""
+        s = DepositService.get_settings(db)
+        start = date.today()
+        if s["cap_day"]:
+            from app.services.deposit_calc import align_capitalization_day, add_months
+
+            cap = align_capitalization_day(start, s["cap_day"])
+            if cap <= start:
+                start = add_months(cap, 1)
+            else:
+                start = cap
+        return build_forecast(
+            start,
+            s["balance"],
+            s["rate"],
+            target_date,
+            monthly_contribution,
+            rate_schedule=s["rate_schedule"],
+            capitalization_day=s["cap_day"],
+        )
 
     @staticmethod
     def required_monthly(
@@ -113,14 +237,16 @@ class DepositService:
         rate: Decimal,
         target: Decimal,
         target_date: date,
+        start_date: date | None = None,
+        rate_schedule: list | None = None,
+        capitalization_day: int | None = None,
     ) -> Decimal:
-        start = date.today()
-        months = (target_date.year - start.year) * 12 + (target_date.month - start.month)
-        if months <= 0:
-            return Decimal("0")
-        monthly_rate = rate / Decimal("100") / Decimal("12")
-        remaining = target - balance
-        if monthly_rate == 0:
-            return (remaining / months).quantize(Decimal("0.01"))
-        factor = ((1 + monthly_rate) ** months - 1) / monthly_rate
-        return (remaining / Decimal(str(factor))).quantize(Decimal("0.01"))
+        return required_monthly_contribution(
+            balance,
+            rate,
+            target,
+            target_date,
+            start_date=start_date,
+            rate_schedule=rate_schedule,
+            capitalization_day=capitalization_day,
+        )

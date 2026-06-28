@@ -3,42 +3,136 @@
 {% block content %}
 {% set today_year = year %}
 {% set today_month = month %}
+{% set cur_y = now_date().year %}
+{% set cur_m = now_date().month %}
+{% set next_plan_y, next_plan_m = shift_month(cur_y, cur_m, 1) %}
 
-<h1 class="text-2xl font-bold mb-6">План на {{ month_name(month) }} {{ year }}</h1>
+<nav class="flex items-stretch gap-2 mb-4" aria-label="Месяц плана">
+    <a href="/plan/{{ prev_year }}/{{ prev_month }}"
+        class="btn-touch flex items-center justify-center px-4 border border-slate-200 rounded-xl bg-white text-lg shrink-0"
+        aria-label="Предыдущий месяц">←</a>
+    <div class="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 py-2 text-center">
+        <h1 class="text-lg font-bold leading-tight">{{ month_name(month) }} {{ year }}</h1>
+        {% if not is_current_month %}
+        <a href="/plan/{{ cur_y }}/{{ cur_m }}" class="text-sm text-indigo-600 underline">Текущий месяц</a>
+        {% endif %}
+    </div>
+    <a href="/plan/{{ next_year }}/{{ next_month }}"
+        class="btn-touch flex items-center justify-center px-4 border border-slate-200 rounded-xl bg-white text-lg shrink-0"
+        aria-label="Следующий месяц">→</a>
+</nav>
+
+{% if is_current_month %}
+<p class="text-sm text-slate-600 mb-4">
+    Планируете заранее?
+    <a href="/plan/{{ next_plan_y }}/{{ next_plan_m }}" class="text-indigo-600 font-medium underline">
+        Открыть {{ month_name(next_plan_m) }} {{ next_plan_y }} →
+    </a>
+</p>
+{% elif year > cur_y or (year == cur_y and month > cur_m) %}
+<p class="text-sm text-indigo-800 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 mb-4">
+    План на будущий месяц — расходы и лимиты сохранятся отдельно от текущего.
+</p>
+{% endif %}
+
+{% if request.query_params.get('saved') %}
+<p class="text-sm text-green-700 bg-green-50 border border-green-100 rounded-xl px-3 py-2 mb-4">Сохранено</p>
+{% endif %}
+{% if request.query_params.get('error') %}
+<p class="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mb-4">Проверьте суммы</p>
+{% endif %}
+
+<!-- Плановые расходы — первым блоком, основной ввод с телефона -->
+<section class="mb-8 bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+    <h2 class="text-lg font-semibold mb-3">Плановые крупные расходы</h2>
+    {% if plan and plan.planned_expenses %}
+    <ul class="divide-y mb-4">
+        {% for pe in plan.planned_expenses %}
+        <li class="py-3 flex justify-between items-start gap-2">
+            <div class="min-w-0">
+                <div class="font-medium">{{ pe.description }}</div>
+                <div class="text-sm text-slate-600">{{ pe.amount | money }} ₽
+                    {% if pe.expected_date %} · {{ pe.expected_date.strftime('%d.%m.%Y') }}{% endif %}
+                </div>
+            </div>
+            <form method="post" action="/plan/planned-expense/{{ pe.id }}/delete">
+                <button type="submit" class="btn-touch text-red-600 text-sm border border-red-100 rounded-lg">Удалить</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm text-slate-500 mb-4">Добавьте крупные траты месяца: аренда, операция кота, разовые платежи.</p>
+    {% endif %}
+    <form method="post" action="/plan/{{ year }}/{{ month }}/planned-expense" class="space-y-3">
+        <input type="text" name="description" placeholder="Описание" class="w-full p-3 border rounded-xl" required>
+        <input type="text" name="amount" inputmode="decimal" placeholder="Сумма, ₽" class="w-full p-3 border rounded-xl" required>
+        <input type="date" name="expected_date" class="w-full p-3 border rounded-xl">
+        <select name="category_id" class="w-full p-3 border rounded-xl bg-white">
+            <option value="">— Категория —</option>
+            {% for cat in categories %}
+            <option value="{{ cat.id }}">{{ cat.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-primary">Добавить расход</button>
+    </form>
+</section>
+
+<section class="mb-8 bg-white rounded-xl p-4 border border-slate-100">
+    <h2 class="text-lg font-semibold mb-3">Плановые взносы по долгам</h2>
+    {% if plan and plan.planned_debt_payments %}
+    <ul class="divide-y mb-4">
+        {% for pp in plan.planned_debt_payments %}
+        <li class="py-3 flex justify-between items-center gap-2">
+            <span>{{ pp.debt.name if pp.debt else 'Долг' }} — {{ pp.amount | money }} ₽</span>
+            <form method="post" action="/plan/planned-debt/{{ pp.id }}/delete">
+                <button type="submit" class="btn-touch text-red-600 text-sm border rounded-lg">Удалить</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    <form method="post" action="/plan/{{ year }}/{{ month }}/planned-debt" class="space-y-3 mobile-stack flex flex-col">
+        <select name="debt_id" class="w-full p-3 border rounded-xl bg-white" required>
+            {% for debt in debts %}
+            <option value="{{ debt.id }}">{{ debt.name }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="amount" inputmode="decimal" placeholder="Сумма, ₽" class="w-full p-3 border rounded-xl" required>
+        <button type="submit" class="btn-primary">Добавить взнос</button>
+    </form>
+</section>
 
 <form method="post" action="/plan/{{ year }}/{{ month }}/limits" class="space-y-4">
+    <h2 class="text-lg font-semibold">Лимиты 50/30/20</h2>
     <div>
-        <label class="block text-sm text-slate-600 mb-1">Ожидаемый доход</label>
+        <label class="block text-sm text-slate-600 mb-1">Ожидаемый доход, ₽</label>
         <input type="text" name="expected_income" inputmode="decimal"
             value="{% if plan %}{{ plan.expected_income }}{% else %}0{% endif %}"
-            class="w-full p-4 text-lg border rounded-xl" required>
+            class="w-full p-3 border rounded-xl" required>
     </div>
 
-    <p class="text-sm text-slate-500">Лимиты по категориям (автораспределение 50/30/20 при первом сохранении):</p>
-
     {% for group, pct in group_percents.items() %}
-    <h3 class="font-semibold mt-4">
+    <h3 class="font-semibold mt-2 text-sm text-slate-700">
         {% if group == 'needs' %}Нужды (50%){% elif group == 'wants' %}Желания (30%){% else %}Сбережения (20%){% endif %}
     </h3>
     {% for cat in categories if cat.group == group %}
-    <div class="flex items-center gap-3">
-        <label class="flex-1 text-sm">{{ cat.name }}</label>
+    <div class="plan-limit-row">
+        <label class="text-sm flex-1">{{ cat.name }}</label>
         <input type="text" name="limit_{{ cat.id }}" inputmode="decimal"
             value="{{ limits_map.get(cat.id, 0) }}"
-            class="w-32 p-2 border rounded-lg text-right">
+            class="p-3 border rounded-xl text-right">
     </div>
     {% endfor %}
     {% endfor %}
 
-    <button type="submit" class="w-full p-4 text-lg font-semibold bg-indigo-600 text-white rounded-xl">
-        Сохранить план
-    </button>
+    <div class="form-sticky-footer">
+        <button type="submit" class="btn-primary">Сохранить план</button>
+    </div>
 </form>
 
-<form method="post" action="/plan/{{ year }}/{{ month }}" class="mt-4">
+<form method="post" action="/plan/{{ year }}/{{ month }}" class="mt-3">
     <input type="hidden" name="expected_income" value="{% if plan %}{{ plan.expected_income }}{% else %}0{% endif %}">
-    <button type="submit" class="w-full p-3 text-sm border rounded-xl hover:bg-slate-50">
-        Автораспределить 50/30/20 заново
-    </button>
+    <button type="submit" class="btn-secondary">Пересчитать 50/30/20 автоматически</button>
 </form>
 {% endblock %}

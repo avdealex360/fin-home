@@ -6,7 +6,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, Debt, Goal, MonthlyPlan, Transaction
-from app.services.dashboard import DashboardService, get_setting
+from app.services.dashboard import DashboardService, get_setting, set_setting
 
 
 @dataclass
@@ -35,7 +35,7 @@ class CategoryLimitRule(Rule):
 
         plan = (
             db.query(MonthlyPlan)
-            .options(joinedload(MonthlyPlan.limits).joinedload("category"))
+            .options(joinedload(MonthlyPlan.limits))
             .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
             .first()
         )
@@ -290,3 +290,16 @@ class RuleEngine:
                 results.append(advice)
         results.sort(key=lambda a: a.priority, reverse=True)
         return results[:max_advice]
+
+    @staticmethod
+    def mark_shown(db: Session, advice_list: list[Advice]) -> None:
+        """Mark one-time success advices as notified."""
+        from app.models import Debt, Goal
+
+        for advice in advice_list:
+            if "Подушка безопасности 150 000" in advice.message:
+                set_setting(db, "pillow_150k_notified", "1")
+            if "закрыта!" in advice.message.lower():
+                closed = db.query(Debt).filter(Debt.is_closed.is_(True)).order_by(Debt.id.desc()).first()
+                if closed:
+                    set_setting(db, f"debt_closed_notified_{closed.id}", "1")

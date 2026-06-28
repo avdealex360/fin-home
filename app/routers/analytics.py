@@ -40,13 +40,20 @@ def analytics_page(
         )
 
     cat_history = []
+    cat_average = None
     if category_id:
         cat_history = AnalyticsService.category_history(db, category_id, 6)
+        cat_average = AnalyticsService.category_average(db, category_id, 6)
 
-    chart_labels = [f"{y}-{m:02d}" for y, m, _ in trends]
+    cumulative = AnalyticsService.cumulative_trends(db, 12)
+    chart_labels = [f"{t.year}-{t.month:02d}" for t in trends]
     chart_income = [float(t.income) for t in trends]
     chart_expense = [float(t.expense) for t in trends]
     chart_savings = [float(t.savings) for t in trends]
+    cum_labels = [c["label"] for c in cumulative]
+    cum_income = [c["income"] for c in cumulative]
+    cum_expense = [c["expense"] for c in cumulative]
+    cum_savings = [c["savings"] for c in cumulative]
     cat_chart_labels = [f"{y}-{m:02d}" for y, m, _ in cat_history]
     cat_chart_values = [float(v) for _, _, v in cat_history]
 
@@ -62,11 +69,16 @@ def analytics_page(
             "categories": categories,
             "category_id": category_id,
             "cat_history": cat_history,
+            "cat_average": cat_average,
             "debts": debt_data,
             "chart_labels": chart_labels,
             "chart_income": chart_income,
             "chart_expense": chart_expense,
             "chart_savings": chart_savings,
+            "cum_labels": cum_labels,
+            "cum_income": cum_income,
+            "cum_expense": cum_expense,
+            "cum_savings": cum_savings,
             "cat_chart_labels": cat_chart_labels,
             "cat_chart_values": cat_chart_values,
         },
