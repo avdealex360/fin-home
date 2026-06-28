@@ -1,11 +1,13 @@
 # Makefile — шпаргалка по командам
 
-Все команды запускаются из корня репозитория:
+Все команды — из корня репозитория:
 
 ```bash
 cd fin-home
 make help
 ```
+
+Документация: [PROJECT.md](PROJECT.md) · [DEPLOY.md](DEPLOY.md) · [README.md](../README.md)
 
 ---
 
@@ -14,30 +16,23 @@ make help
 ### Локально (Python)
 
 ```bash
-make setup      # .env + data/backups
-make install    # pip install
-make dev        # http://127.0.0.1:8000
+make setup && make install && make dev    # http://127.0.0.1:8000
 ```
 
 ### Локально (Docker)
 
 ```bash
-make setup
-make up         # http://127.0.0.1:8000
-make logs       # смотреть логи
-make down       # остановить
+make setup && make up                     # http://127.0.0.1:8000
+make logs && make down
 ```
 
-### Production на VPS
+### Production (VPS)
 
 ```bash
-make setup
-make prod-up    # https://194.154.29.93
-make prod-migrate
-make prod-logs
+make setup && nano .env
+make prod-up                              # certs + Caddy + app
+make prod-migrate && make prod-check      # https://194.154.29.93
 ```
-
-Подробнее про VPS: [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -47,50 +42,52 @@ make prod-logs
 |---------|----------|
 | `make help` | Список всех команд |
 | **Инициализация** | |
-| `make setup` | Создать `.env` из примера и `data/backups/` |
-| `make install` | Установить Python-зависимости |
+| `make setup` | `.env` из примера + `data/backups/` |
+| `make install` | `pip install -r requirements.txt` |
 | **Локальная разработка** | |
-| `make dev` | Uvicorn с hot-reload на `:8000` |
-| `make test` | Запустить pytest |
-| `make migrate-local` | Alembic-миграции без Docker |
-| `make notify` | Telegram-уведомления (`scripts/notify.py`) |
+| `make dev` | Uvicorn hot-reload `:8000` |
+| `make test` | pytest (`pip install pytest`) |
+| `make migrate-local` | Alembic без Docker |
+| `make notify` | Telegram-уведомления |
 | **Docker (локально)** | |
-| `make up` | Поднять `docker compose up -d --build` |
-| `make down` | Остановить контейнеры |
+| `make up` | Поднять контейнеры |
+| `make down` | Остановить |
 | `make restart` | Перезапустить |
-| `make rebuild` | Пересобрать образы и пересоздать контейнеры |
-| `make logs` | Логи (follow) |
-| `make ps` | Статус контейнеров |
-| `make shell` | Bash в контейнере `budget-app` |
-| `make migrate` | Миграции внутри Docker |
-| `make migrate-stamp` | `alembic stamp head` (если таблицы уже есть) |
-| `make backup` | SQL-дамп базы в `data/backups/` |
+| `make rebuild` | Пересобрать (⚠ не на VPS) |
+| `make logs` | Логи follow |
+| `make ps` | Статус |
+| `make shell` | Bash в budget-app |
+| `make migrate` | Миграции в Docker |
+| `make migrate-stamp` | `alembic stamp head` |
+| `make backup` | SQL-дамп в `data/backups/` |
 | **Docker (production)** | |
-| `make prod-up` | Prod: Caddy + app (`docker-compose.prod.yml`) |
-| `make prod-down` | Остановить prod-стек |
-| `make prod-restart` | Перезапустить prod |
+| `make prod-certs` | Self-signed сертификат для IP |
+| `make prod-up` | certs + Caddy + app |
+| `make prod-down` | Остановить prod |
+| `make prod-restart` | Перезапустить |
 | `make prod-rebuild` | Пересобрать prod |
 | `make prod-logs` | Логи prod |
-| `make prod-ps` | Статус prod-контейнеров |
-| `make prod-shell` | Shell в prod-контейнере |
-| `make prod-migrate` | Миграции в prod |
-| `make prod-migrate-stamp` | Stamp head в prod |
-| `make prod-check` | Диагностика caddy → app |
-| `make prod-caddy-reset` | Сброс TLS Caddy и перезапуск |
+| `make prod-ps` | Статус контейнеров |
+| `make prod-shell` | Shell в budget-app |
+| `make prod-migrate` | Миграции |
+| `make prod-migrate-stamp` | Stamp head |
+| `make prod-check` | Диагностика HTTPS |
+| `make prod-caddy-reset` | Сброс Caddy + перезапуск |
+| `make prod-backup` | Бэкап на сервере |
 | **VPS** | |
-| `make deploy` | Запуск `scripts/deploy.sh` (на сервере) |
-| `make install-compose` | Установить Docker Compose plugin (root) |
+| `make deploy` | `scripts/deploy.sh` |
+| `make install-compose` | Docker Compose (root) |
 | `make vps-setup` | Первичная настройка VPS (root) |
 
 ---
 
 ## Типичные сценарии
 
-### Первый запуск на Mac/Linux
+### Первый запуск локально
 
 ```bash
-cp .env.example .env   # или make setup
-# отредактировать APP_USER, APP_PASSWORD
+make setup
+# отредактировать .env
 make up
 open http://127.0.0.1:8000
 ```
@@ -98,51 +95,40 @@ open http://127.0.0.1:8000
 ### Обновление после git pull (локально)
 
 ```bash
-make rebuild
-make migrate
+make rebuild && make migrate
 ```
 
 ### Первый запуск на VPS
 
 ```bash
-# от root
-make vps-setup
-
-# от deploy
-cd /opt/fin-home
-make setup
-nano .env
-make prod-up
-make prod-migrate
-```
-
-Если миграции падают с `table app_users already exists`:
-
-```bash
-make prod-migrate-stamp
+make vps-setup                    # root
+make setup && nano .env           # deploy
+make prod-up && make prod-migrate && make prod-check
 ```
 
 ### Деплой новой версии
 
-**Автоматически:** `git push origin main` → GitHub Actions.
+- Авто: `git push origin main`
+- Вручную на VPS: `make deploy` или `make prod-rebuild && make prod-migrate`
 
-**Вручную на VPS:**
-
-```bash
-make deploy
-# или
-make prod-rebuild && make prod-migrate
-```
-
-### Бэкап и восстановление
+### HTTPS не работает на VPS
 
 ```bash
-make backup
-# или на VPS:
-make prod-backup
+rm -rf certs/
+make prod-certs
+make prod-rebuild
+make prod-check
+curl -Ik https://194.154.29.93 --insecure
 ```
 
-Cron на VPS:
+### Бэкап
+
+```bash
+make backup           # локально
+make prod-backup      # VPS
+```
+
+Cron:
 
 ```
 0 3 * * * cd /opt/fin-home && make prod-backup >> /var/log/fin-home-backup.log 2>&1
@@ -154,40 +140,52 @@ Cron на VPS:
 sqlite3 data/budget.db < data/backups/budget_YYYYMMDD.sql
 ```
 
-### Docker Compose не установлен на VPS
+### Docker Compose не установлен
 
 ```bash
-# от root
-make install-compose
+make install-compose    # root
 docker compose version
 ```
 
 ---
 
-## Переменные
+## Переменные окружения make
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `PYTHON` | `python3` | Интерпретатор Python |
-| `UVICORN` | `uvicorn` | Команда uvicorn |
-| `APP_DIR` | текущая директория | Корень проекта (для deploy.sh) |
+| `PYTHON` | `python3` | Интерпретатор |
+| `UVICORN` | `uvicorn` | Сервер разработки |
+| `APP_DIR` | `.` | Корень проекта |
+| `VPS_IP` | `194.154.29.93` | IP для `gen-certs.sh` |
 
 Пример:
 
 ```bash
+VPS_IP=203.0.113.10 make prod-certs
 PYTHON=.venv/bin/python make dev
 ```
 
 ---
 
-## Соответствие скриптам
+## Скрипты
 
-| Make | Скрипт / команда |
-|------|------------------|
+| Make | Скрипт |
+|------|--------|
 | `make deploy` | `scripts/deploy.sh` |
 | `make backup` | `scripts/backup.sh` |
+| `make prod-check` | `scripts/prod-check.sh` |
+| `make prod-certs` | `scripts/gen-certs.sh` |
 | `make vps-setup` | `scripts/vps-setup.sh` |
 | `make install-compose` | `scripts/install-compose.sh` |
 | `make notify` | `scripts/notify.py` |
 
-Скрипты можно вызывать напрямую — Makefile это обёртка для удобства.
+---
+
+## ⚠ На VPS
+
+| Делать | Не делать |
+|--------|-----------|
+| `make prod-up` | `make up` (без Caddy) |
+| `make prod-rebuild` | `make rebuild` |
+| `make prod-check` | — |
+| `make deploy` | — |

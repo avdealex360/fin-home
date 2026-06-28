@@ -1,82 +1,114 @@
-# Семейный бюджет
+# Семейный бюджет (fin-home)
 
-Веб-приложение для ведения семейного бюджета по методу 50/30/20.
+Веб-приложение для семейного бюджета по методу **50/30/20**. Данные на вашем VPS, доступ с телефона и браузера.
 
-## Стек
+**Production:** https://194.154.29.93  
+**Репозиторий:** https://github.com/avdealex360/fin-home
 
-- Python 3.12 + FastAPI
-- SQLite + SQLAlchemy
-- HTMX + Jinja2 + Tailwind CDN
-- Docker Compose
+---
 
 ## Быстрый старт
 
 ```bash
+git clone https://github.com/avdealex360/fin-home.git
+cd fin-home
 make setup          # .env + data/backups
-make up             # Docker, http://127.0.0.1:8000
-# или без Docker:
-make install && make dev
+make up             # Docker → http://127.0.0.1:8000
 ```
 
-Логин/пароль — из `.env` (`APP_USER`, `APP_PASSWORD`).
+Логин и пароль — из `.env` (`APP_USER`, `APP_PASSWORD`).
 
-Полный список команд: **`make help`** или **[docs/MAKEFILE.md](docs/MAKEFILE.md)**.
+Без Docker: `make install && make dev`
 
-## Функции
+---
 
-- **Дашборд**: 50/30/20, долги, цели, советы, баланс вклада, доход в EUR
-- **План**: лимиты по категориям, плановые расходы и взносы по долгам
-- **Аналитика**: план vs факт, накопительный график, средний расход по категории
-- **Вклад**: калькулятор, график прогноза, история снимков
-- **Мультивалютность**: поле EUR при вводе дохода, курс EUR/RUB и EUR/USD
-- **Telegram**: `/add`, `/income`, `/balance` + cron-уведомления
+## Документация
 
-## Команды (Makefile)
+| Документ | Описание |
+|----------|----------|
+| **[docs/PROJECT.md](docs/PROJECT.md)** | Полное описание: архитектура, бизнес-процессы, интерфейс |
+| **[docs/DEPLOY.md](docs/DEPLOY.md)** | Деплой на VPS, GitHub Actions, HTTPS, troubleshooting |
+| **[docs/MAKEFILE.md](docs/MAKEFILE.md)** | Все команды `make` |
+
+Список команд в терминале: `make help`
+
+---
+
+## Возможности
+
+- **Дашборд** — 50/30/20, долги, цели, советы, быстрая запись операций
+- **План** — лимиты, плановые крупные расходы и взносы по долгам (любой месяц)
+- **Аналитика** — план vs факт, топ категорий, накопительный график
+- **Вклад** — калькулятор капитализации, график ставок
+- **Цели** — подушка, вклад, машина
+- **Настройки** — долги, категории, курсы EUR/RUB, экспорт
+- **Telegram** — `/add`, `/income`, `/balance` (опционально)
+
+---
+
+## Стек
+
+Python 3.12 · FastAPI · SQLite · SQLAlchemy · Alembic · HTMX · Jinja2 · Tailwind · Docker · Caddy
+
+---
+
+## Команды
 
 | Задача | Команда |
 |--------|---------|
-| Локальный Docker | `make up` / `make down` / `make logs` |
-| Локальная разработка | `make dev` |
+| Локально | `make up` / `make down` / `make logs` |
+| Разработка | `make dev` |
 | Тесты | `make test` |
-| Миграции | `make migrate` или `make migrate-local` |
+| Миграции | `make migrate` |
 | Бэкап | `make backup` |
-| Production (VPS) | `make prod-up` / `make prod-logs` |
-| Деплой на сервере | `make deploy` |
+| **VPS prod** | `make prod-up` / `make prod-check` |
+| Деплой | `git push origin main` или `make deploy` на сервере |
 
-Подробнее: **[docs/MAKEFILE.md](docs/MAKEFILE.md)**
+---
 
-## Первые шаги
-
-1. Заполните **План** на текущий месяц (ожидаемый доход)
-2. Проверьте долги и цели в **Настройках** (предзаполнены при первом запуске)
-3. Вносите операции с дашборда
-
-## Деплой на VPS
-
-Автодеплой при `git push origin main`. Инструкция: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+## Деплой на VPS (кратко)
 
 ```bash
-# на VPS (root, один раз)
+# root, один раз
 make vps-setup
 
-# на VPS (deploy)
+# deploy
 make setup && nano .env
-make prod-up && make prod-migrate
+make prod-up && make prod-migrate && make prod-check
 ```
 
-Prod URL: **https://194.154.29.93**
+HTTPS: self-signed сертификат для IP (`make prod-certs`). Браузер покажет предупреждение — это нормально.
 
-## Telegram-бот (опционально)
+Подробно: **[docs/DEPLOY.md](docs/DEPLOY.md)**
 
-1. Создайте бота через @BotFather
-2. Добавьте в `.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_IDS`
-3. Webhook: `https://your-domain/telegram/webhook`
-4. Уведомления: `make notify` или cron `0 9 * * * cd /opt/fin-home && make notify`
+---
+
+## Первые шаги в интерфейсе
+
+1. **План** — ожидаемый доход, крупные расходы, лимиты (можно на следующий месяц)
+2. **Настройки** — проверить долги и категории (предзаполнены)
+3. **Дашборд** — вносить операции через «Быструю запись»
+
+Подробный сценарий: **[docs/PROJECT.md §4](docs/PROJECT.md#4-ежемесячный-цикл-бизнес-процесс)**
+
+---
+
+## Telegram (опционально)
+
+```env
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_ALLOWED_IDS=123456789
+```
+
+Webhook нужен домен с Let's Encrypt. Уведомления: `make notify`.
+
+---
 
 ## Бэкап
 
 ```bash
-make backup
+make backup          # локально
+make prod-backup     # на VPS
 ```
 
 Cron на VPS:
@@ -85,16 +117,28 @@ Cron на VPS:
 0 3 * * * cd /opt/fin-home && make prod-backup >> /var/log/fin-home-backup.log 2>&1
 ```
 
+---
+
+## Переменные окружения
+
+| Переменная | Описание |
+|------------|----------|
+| `APP_USER` | Логин Basic Auth |
+| `APP_PASSWORD` | Пароль |
+| `APP_SECRET` | Секрет приложения |
+| `DATABASE_URL` | `sqlite:///./data/budget.db` |
+| `TELEGRAM_BOT_TOKEN` | Токен бота (опционально) |
+| `TELEGRAM_ALLOWED_IDS` | ID пользователей Telegram |
+
+Пример: [`.env.example`](.env.example)
+
+---
+
 ## Переезд на другой VPS
 
 ```bash
-tar -czf budget-backup.tar.gz data/ docker-compose.yml .env
+tar -czf budget-backup.tar.gz data/ .env certs/
 scp budget-backup.tar.gz user@new-vps:~/
 # на новом VPS:
 tar -xzf budget-backup.tar.gz && make prod-up
 ```
-
-## Документация
-
-- [docs/MAKEFILE.md](docs/MAKEFILE.md) — все команды `make`
-- [docs/DEPLOY.md](docs/DEPLOY.md) — деплой на VPS через GitHub Actions

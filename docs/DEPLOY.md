@@ -3,50 +3,44 @@
 Автодеплой при push в `main` через GitHub Actions. На сервере: Docker Compose + Caddy (HTTPS).
 
 **VPS:** `194.154.29.93` (Ubuntu 24.04)  
-**Репозиторий:** https://github.com/avdealex360/fin-home
+**Репозиторий:** https://github.com/avdealex360/fin-home  
+**URL:** https://194.154.29.93
 
-Команды ниже можно заменить на **`make`** — полный справочник: [MAKEFILE.md](MAKEFILE.md).
+Связанные документы: [PROJECT.md](PROJECT.md) · [MAKEFILE.md](MAKEFILE.md) · [README.md](../README.md)
+
+---
 
 ## Архитектура
 
 ```
 git push main → GitHub Actions → SSH → make deploy
                                               ↓
-                                    docker compose (prod)
+                         docker compose (prod): Caddy + budget-app
                                               ↓
                               Caddy :443 → budget-app :8000
+                                              ↓
+                              ./data/budget.db (на диске VPS)
 ```
 
-Данные SQLite хранятся в `/opt/fin-home/data/` на хосте и не теряются при деплое.
+TLS: self-signed сертификат для IP (`scripts/gen-certs.sh` → `certs/`).  
+`tls internal` в Caddy **не использовать** — ломает handshake на IP.
 
 ---
 
 ## Шаг 1. Подготовка VPS (один раз)
 
-Подключитесь к серверу как root:
-
 ```bash
 ssh root@194.154.29.93
-```
-
-```bash
 git clone https://github.com/avdealex360/fin-home.git /opt/fin-home
 cd /opt/fin-home
 make vps-setup
 ```
 
-Или до push — с локальной машины:
-
-```bash
-scp scripts/vps-setup.sh root@194.154.29.93:/tmp/
-ssh root@194.154.29.93 'bash /tmp/vps-setup.sh'
-```
-
-Скрипт установит Docker, Compose, пользователя `deploy`, UFW (22, 80, 443) и клонирует репозиторий.
+Скрипт: Docker, Compose, пользователь `deploy`, UFW (22, 80, 443), клон репозитория.
 
 ### Docker Compose не найден
 
-Часто на VPS с Amnezia Docker есть, а Compose — нет. От root:
+На VPS с Amnezia часто нет `docker compose`. От root:
 
 ```bash
 cd /opt/fin-home
@@ -54,7 +48,7 @@ make install-compose
 docker compose version
 ```
 
-### Ограничить доступ только через VPN (опционально)
+### Доступ только через VPN (опционально)
 
 ```bash
 VPN_CIDR=10.8.0.0/24 make vps-setup
@@ -62,7 +56,7 @@ VPN_CIDR=10.8.0.0/24 make vps-setup
 
 ---
 
-## Шаг 2. Секреты приложения на VPS
+## Шаг 2. Секреты и первый запуск
 
 ```bash
 ssh deploy@194.154.29.93
@@ -71,68 +65,55 @@ make setup
 nano .env
 ```
 
-Обязательно задайте:
-
 ```env
 APP_USER=admin
 APP_PASSWORD=ваш_длинный_пароль
 APP_SECRET=случайная_строка_32_символа
 ```
 
-Первый запуск:
-
 ```bash
-make prod-up
+make prod-up          # gen-certs + Caddy + app
 make prod-migrate
+make prod-check       # все проверки OK
 ```
 
-Если миграции падают с `table app_users already exists`:
+Откройте **https://194.154.29.93** → примите предупреждение о сертификате → логин из `.env`.
 
-```bash
-make prod-migrate-stamp
-```
-
-Откройте: **https://194.154.29.93** (примите предупреждение о самоподписанном сертификате).
+Если миграции: `table app_users already exists` → `make prod-migrate-stamp`
 
 ---
 
 ## Шаг 3. SSH-ключ для GitHub Actions
 
-На **локальной машине**:
+На локальной машине:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/fin-home-deploy -N ""
 cat ~/.ssh/fin-home-deploy.pub
 ```
 
-Публичный ключ на VPS:
+На VPS (root):
 
 ```bash
-ssh root@194.154.29.93
 mkdir -p /home/deploy/.ssh
-echo "ВСТАВЬТЕ_ПУБЛИЧНЫЙ_КЛЮЧ" >> /home/deploy/.ssh/authorized_keys
+echo "ПУБЛИЧНЫЙ_КЛЮЧ" >> /home/deploy/.ssh/authorized_keys
 chown -R deploy:deploy /home/deploy/.ssh
-chmod 700 /home/deploy/.ssh
-chmod 600 /home/deploy/.ssh/authorized_keys
+chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-Проверка:
-
-```bash
-ssh -i ~/.ssh/fin-home-deploy deploy@194.154.29.93 'echo OK'
-```
+Проверка: `ssh -i ~/.ssh/fin-home-deploy deploy@194.154.29.93 'echo OK'`
 
 ---
 
-## Шаг 4. Секреты в GitHub
+## Шаг 4. Секреты GitHub
 
-Repo → **Settings** → **Secrets and variables** → **Actions**:
+Settings → Secrets → Actions:
 
 | Secret | Значение |
 |--------|----------|
 | `VPS_HOST` | `194.154.29.93` |
 | `VPS_USER` | `deploy` |
-| `VPS_SSH_KEY` | приватный ключ `~/.ssh/fin-home-deploy` целиком |
+| `VPS_SSH_KEY` | приватный ключ целиком |
 
 ---
 
@@ -142,32 +123,27 @@ Repo → **Settings** → **Secrets and variables** → **Actions**:
 git push origin main
 ```
 
-Проверка: GitHub → **Actions** → workflow **Deploy**.
+Проверка: GitHub → Actions → **Deploy**.
 
 На VPS:
 
 ```bash
 make prod-ps
 make prod-logs
+make prod-check
 ```
 
-Ручной деплой:
-
-```bash
-ssh deploy@194.154.29.93 'cd /opt/fin-home && make deploy'
-```
-
-Или: GitHub → **Actions** → **Deploy** → **Run workflow**.
+Ручной деплой: `ssh deploy@194.154.29.93 'cd /opt/fin-home && make deploy'`
 
 ---
 
-## Шаг 6. Бэкап базы
+## Шаг 6. Бэкап
 
 ```bash
 make prod-backup
 ```
 
-Cron на VPS:
+Cron:
 
 ```
 0 3 * * * cd /opt/fin-home && make prod-backup >> /var/log/fin-home-backup.log 2>&1
@@ -181,11 +157,46 @@ sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMD
 
 ---
 
+## HTTPS и сертификаты
+
+| Файл | Назначение |
+|------|------------|
+| `scripts/gen-certs.sh` | Генерация self-signed для IP |
+| `certs/cert.pem`, `certs/key.pem` | Сертификат (не в git) |
+| `Caddyfile` | `:443` + `tls /certs/...` |
+
+Пересоздать сертификат:
+
+```bash
+rm -rf certs/
+make prod-certs
+make prod-rebuild
+```
+
+Проверка:
+
+```bash
+curl -Ik https://194.154.29.93 --insecure   # ожидается HTTP/2 401
+make prod-check
+```
+
+---
+
 ## Когда появится домен
 
-1. A-запись домена → `194.154.29.93`
-2. В [`Caddyfile`](../Caddyfile) замените IP на домен, уберите `tls internal`
-3. `make prod-restart` или `make prod-rebuild`
+1. A-запись → `194.154.29.93`
+2. В `Caddyfile` заменить блок на:
+
+```
+your-domain.com {
+    reverse_proxy budget-app:8000
+}
+```
+
+3. Убрать volume `./certs` из `docker-compose.prod.yml` (Caddy получит Let's Encrypt сам)
+4. `make prod-rebuild`
+
+Telegram webhook заработает с валидным HTTPS-доменом.
 
 ---
 
@@ -193,61 +204,38 @@ sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMD
 
 | Проблема | Решение |
 |----------|---------|
-| `unknown shorthand flag: 'f'` | `make install-compose` (от root) |
+| `unknown shorthand flag: 'f'` | `make install-compose` (root) |
 | `table app_users already exists` | `make prod-migrate-stamp` |
 | 502 Bad Gateway | `make prod-logs`, `make prod-check` |
-| ERR_SSL_PROTOCOL_ERROR | `make prod-certs && make prod-rebuild` (не `tls internal`) |
-| `make rebuild` на VPS | Не использовать — только `make prod-rebuild` |
-| `.env not found` при деплое | `make setup && nano .env` |
-| Workflow падает на SSH | Проверить GitHub Secrets и `authorized_keys` |
+| ERR_SSL_PROTOCOL_ERROR | `rm -rf certs && make prod-certs && make prod-rebuild` |
+| `make rebuild` на VPS | **Не использовать** — только `make prod-rebuild` |
+| `.env not found` | `make setup && nano .env` |
+| SSH deploy падает | GitHub Secrets, `authorized_keys` |
+| prod-check FAIL на :443 | `make prod-caddy-reset`, проверить `certs/` |
 
-**ERR_SSL_PROTOCOL_ERROR при открытии https://194.154.29.93**
-
-Частая причина — HTTP/3 (QUIC): браузер стучится по UDP/443, а порт снаружи недоступен.
-
-```bash
-git pull origin main
-make prod-caddy-reset
-make prod-check
-```
-
-Проверка с вашего компьютера:
-
-```bash
-curl -Ik https://194.154.29.93 --insecure
-```
-
-**Не запускайте `make rebuild` на VPS** — это локальный compose без Caddy. Только `make prod-rebuild`.
-
-**Логи приложения:**
+Логи:
 
 ```bash
 make prod-logs
-# только budget-app:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs budget-app
-```
-
-**Локальная разработка без Caddy:**
-
-```bash
-make up
-# http://127.0.0.1:8000
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs caddy
 ```
 
 ---
 
-## Справочник make-команд
+## Справочник make-команд (prod)
 
-| Команда | Где |
-|---------|-----|
-| `make prod-up` | Поднять prod на VPS |
+| Команда | Описание |
+|---------|----------|
+| `make prod-up` | Сертификат + Caddy + app |
 | `make prod-down` | Остановить |
 | `make prod-rebuild` | Пересобрать после git pull |
-| `make prod-migrate` | Миграции |
-| `make prod-migrate-stamp` | Исправить конфликт Alembic |
+| `make prod-migrate` | Миграции Alembic |
+| `make prod-migrate-stamp` | Исправить конфликт миграций |
+| `make prod-check` | Диагностика HTTPS |
+| `make prod-certs` | Только сертификат |
+| `make prod-caddy-reset` | Сброс кэша Caddy |
 | `make prod-backup` | Бэкап SQLite |
-| `make deploy` | Полный деплой (git pull + rebuild) |
-| `make install-compose` | Установить Compose (root) |
-| `make vps-setup` | Первичная настройка VPS (root) |
+| `make deploy` | git pull + rebuild + migrate |
 
 Полный список: [MAKEFILE.md](MAKEFILE.md)
