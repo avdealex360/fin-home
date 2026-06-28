@@ -11,11 +11,24 @@ jobs:
     steps:
       - name: Check secrets
         run: |
+          set -e
           missing=0
-          [ -z "${{ secrets.VPS_HOST }}" ] && echo "::error::Secret VPS_HOST не задан. Settings → Secrets → Actions" && missing=1
-          [ -z "${{ secrets.VPS_USER }}" ] && echo "::error::Secret VPS_USER не задан (обычно: deploy)" && missing=1
-          [ -z "${{ secrets.VPS_SSH_KEY }}" ] && echo "::error::Secret VPS_SSH_KEY не задан (приватный SSH-ключ)" && missing=1
-          [ "$missing" -eq 1 ] && exit 1
+          if [ -z "${{ secrets.VPS_HOST }}" ]; then
+            echo "::error::Secret VPS_HOST не задан. Settings → Secrets → Actions"
+            missing=1
+          fi
+          if [ -z "${{ secrets.VPS_USER }}" ]; then
+            echo "::error::Secret VPS_USER не задан (обычно: deploy)"
+            missing=1
+          fi
+          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then
+            echo "::error::Secret VPS_SSH_KEY не задан (приватный SSH-ключ)"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Secrets OK"
 
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.2.0
