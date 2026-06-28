@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Вклад — Семейный бюджет{% endblock %}
+{% block content %}
+{% set today_year = today.year if today is defined else 2026 %}
+{% set today_month = today.month if today is defined else 6 %}
+
+<h1 class="text-2xl font-bold mb-6">Вклад и накопления</h1>
+
+<form method="post" action="/deposit/update" class="bg-white rounded-xl p-4 border border-slate-100 mb-6 space-y-3">
+    <div class="grid grid-cols-2 gap-3">
+        <div>
+            <label class="text-sm text-slate-600">Баланс</label>
+            <input type="text" name="balance" value="{{ balance }}" class="w-full p-3 border rounded-xl">
+        </div>
+        <div>
+            <label class="text-sm text-slate-600">Ставка %</label>
+            <input type="text" name="rate" value="{{ rate }}" class="w-full p-3 border rounded-xl">
+        </div>
+    </div>
+    <button type="submit" class="w-full p-3 bg-indigo-600 text-white rounded-xl">Обновить</button>
+</form>
+
+<div class="bg-white rounded-xl p-4 border border-slate-100 mb-6">
+    <div class="text-sm text-slate-500">Рекомендуемый ежемесячный взнос</div>
+    <div class="text-2xl font-bold">{{ required | money }} ₽</div>
+    <div class="text-sm text-slate-500">до {{ target_date.strftime('%d.%m.%Y') }}, цель {{ target_amount | money }} ₽</div>
+</div>
+
+<h2 class="text-lg font-semibold mb-3">Калькулятор</h2>
+<form hx-get="/deposit/calculator" hx-target="#calculator-result" hx-trigger="input changed delay:300ms from:input[name=contribution]" class="mb-4">
+    <label class="text-sm text-slate-600">Ежемесячный взнос</label>
+    <input type="text" name="contribution" value="{{ monthly }}" inputmode="decimal"
+        class="w-full p-4 text-lg border rounded-xl">
+</form>
+<div id="calculator-result">
+    {% include "partials/deposit_calculator.html" %}
+</div>
+
+{% if snapshots %}
+<h2 class="text-lg font-semibold mt-6 mb-3">История</h2>
+<ul class="bg-white rounded-xl border divide-y">
+    {% for s in snapshots %}
+    <li class="p-3 flex justify-between text-sm">
+        <span>{{ s.date.strftime('%d.%m.%Y') }}</span>
+        <span>{{ s.balance | money }} ₽ @ {{ s.rate }}%</span>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

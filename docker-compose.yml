@@ -1,0 +1,11 @@
+services:
+  budget-app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file: .env
+    mem_limit: 256m
+    cpus: "0.3"

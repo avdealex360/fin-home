@@ -1,0 +1,4 @@
+<div class="bg-white rounded-xl p-4 border border-slate-100">
+    <div class="text-sm text-slate-500">При взносе {{ monthly | money }} ₽/мес к {{ forecast[-1][0].strftime('%d.%m.%Y') if forecast else '—' }}</div>
+    <div class="text-2xl font-bold">{{ final | money }} ₽</div>
+</div>

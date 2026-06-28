@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Аналитика — Семейный бюджет{% endblock %}
+{% block content %}
+{% set today_year = year %}
+{% set today_month = month %}
+
+<h1 class="text-2xl font-bold mb-6">Аналитика</h1>
+
+<form method="get" class="flex gap-2 mb-6">
+    <input type="number" name="year" value="{{ year }}" class="p-2 border rounded-lg w-24">
+    <input type="number" name="month" value="{{ month }}" min="1" max="12" class="p-2 border rounded-lg w-20">
+    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Показать</button>
+</form>
+
+<h2 class="text-lg font-semibold mb-3">План vs факт — {{ month_name(month) }} {{ year }}</h2>
+<div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm bg-white rounded-xl border border-slate-100">
+        <thead>
+            <tr class="border-b bg-slate-50">
+                <th class="text-left p-3">Категория</th>
+                <th class="text-right p-3">План</th>
+                <th class="text-right p-3">Факт</th>
+                <th class="text-right p-3">Δ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in comparison %}
+            {% if row.plan > 0 or row.fact > 0 %}
+            <tr class="border-b">
+                <td class="p-3">{{ row.category_name }}</td>
+                <td class="p-3 text-right">{{ row.plan | money }}</td>
+                <td class="p-3 text-right">{{ row.fact | money }}</td>
+                <td class="p-3 text-right {% if row.diff > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                    {{ row.diff | money }} ({{ "%.0f"|format(row.diff_percent) }}%)
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="text-lg font-semibold mb-3">Топ-5 расходов</h2>
+<ul class="bg-white rounded-xl border border-slate-100 mb-8 divide-y">
+    {% for name, amount in top %}
+    <li class="p-3 flex justify-between"><span>{{ name }}</span><span>{{ amount | money }} ₽</span></li>
+    {% else %}
+    <li class="p-3 text-slate-500">Нет данных</li>
+    {% endfor %}
+</ul>
+
+<h2 class="text-lg font-semibold mb-3">Динамика по месяцам</h2>
+<canvas id="trendsChart" height="200" class="mb-8 bg-white rounded-xl p-4 border"></canvas>
+
+<h2 class="text-lg font-semibold mb-3">Долги</h2>
+{% for item in debts %}
+<div class="bg-white rounded-xl p-4 border border-slate-100 mb-3">
+    <div class="font-medium">{{ item.debt.name }} — {{ item.debt.remaining | money }} ₽</div>
+    {% if item.forecast %}
+    <div class="text-sm text-slate-500">Прогноз закрытия: {{ item.forecast.strftime('%m.%Y') }}</div>
+    {% endif %}
+    {% if item.payments %}
+    <div class="text-xs text-slate-400 mt-2">Последние платежи:</div>
+    {% for p in item.payments[:3] %}
+    <div class="text-xs">{{ p.date.strftime('%d.%m.%Y') }} — {{ p.amount | money }} ₽</div>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endfor %}
+
+<form method="get" class="mt-8 flex gap-2 items-end">
+    <div>
+        <label class="text-sm text-slate-600">Динамика категории</label>
+        <select name="category_id" class="block p-2 border rounded-lg">
+            <option value="">— выберите —</option>
+            {% for cat in categories %}
+            <option value="{{ cat.id }}" {% if category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <input type="hidden" name="year" value="{{ year }}">
+    <input type="hidden" name="month" value="{{ month }}">
+    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Показать</button>
+</form>
+
+{% if cat_history %}
+<canvas id="catChart" height="150" class="mt-4 bg-white rounded-xl p-4 border"></canvas>
+{% endif %}
+
+<script>
+new Chart(document.getElementById('trendsChart'), {
+    type: 'line',
+    data: {
+        labels: {{ chart_labels | tojson }},
+        datasets: [
+            { label: 'Доход', data: {{ chart_income | tojson }}, borderColor: '#22c55e' },
+            { label: 'Расход', data: {{ chart_expense | tojson }}, borderColor: '#ef4444' },
+            { label: 'Сбережения', data: {{ chart_savings | tojson }}, borderColor: '#6366f1' },
+        ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+});
+
+{% if cat_history %}
+new Chart(document.getElementById('catChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ cat_chart_labels | tojson }},
+        datasets: [{ label: 'Расход', data: {{ cat_chart_values | tojson }}, backgroundColor: '#6366f1' }]
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

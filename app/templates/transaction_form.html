@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{% if transaction %}Редактировать{% else %}Новая операция{% endif %} — Семейный бюджет{% endblock %}
+{% block content %}
+{% set today_year = today[:4]|int %}
+{% set today_month = today[5:7]|int %}
+
+<h1 class="text-2xl font-bold mb-6">{% if transaction %}Редактировать операцию{% else %}Новая операция{% endif %}</h1>
+
+<form method="post" action="{% if transaction %}/transactions/{{ transaction.id }}{% else %}/transactions/{% endif %}" class="space-y-4">
+    <select name="type" class="w-full p-4 text-lg border rounded-xl bg-white" required>
+        <option value="expense" {% if transaction and transaction.type == 'expense' %}selected{% endif %}>Расход</option>
+        <option value="income" {% if transaction and transaction.type == 'income' %}selected{% endif %}>Доход</option>
+        <option value="transfer" {% if transaction and transaction.type == 'transfer' %}selected{% endif %}>В сбережения</option>
+    </select>
+    <input type="text" name="amount" inputmode="decimal" placeholder="Сумма" required
+        value="{% if transaction %}{{ transaction.amount }}{% endif %}"
+        class="w-full p-4 text-lg border rounded-xl">
+    <select name="category_id" class="w-full p-4 text-lg border rounded-xl bg-white">
+        <option value="">— Категория —</option>
+        {% for cat in categories %}
+        <option value="{{ cat.id }}" {% if transaction and transaction.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="date" name="date" value="{% if transaction %}{{ transaction.date.isoformat() }}{% else %}{{ today }}{% endif %}"
+        class="w-full p-4 text-lg border rounded-xl">
+    <select name="user_id" class="w-full p-4 text-lg border rounded-xl bg-white">
+        <option value="">— Кто внёс —</option>
+        {% for u in users %}
+        <option value="{{ u.id }}" {% if transaction and transaction.user_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="text" name="comment" placeholder="Комментарий"
+        value="{% if transaction and transaction.comment %}{{ transaction.comment }}{% endif %}"
+        class="w-full p-4 text-lg border rounded-xl">
+    <button type="submit" class="w-full p-4 text-lg font-semibold bg-indigo-600 text-white rounded-xl">
+        {% if transaction %}Сохранить{% else %}Добавить{% endif %}
+    </button>
+</form>
+{% endblock %}

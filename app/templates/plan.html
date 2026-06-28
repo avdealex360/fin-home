@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}План — {{ month_name(month) }} {{ year }}{% endblock %}
+{% block content %}
+{% set today_year = year %}
+{% set today_month = month %}
+
+<h1 class="text-2xl font-bold mb-6">План на {{ month_name(month) }} {{ year }}</h1>
+
+<form method="post" action="/plan/{{ year }}/{{ month }}/limits" class="space-y-4">
+    <div>
+        <label class="block text-sm text-slate-600 mb-1">Ожидаемый доход</label>
+        <input type="text" name="expected_income" inputmode="decimal"
+            value="{% if plan %}{{ plan.expected_income }}{% else %}0{% endif %}"
+            class="w-full p-4 text-lg border rounded-xl" required>
+    </div>
+
+    <p class="text-sm text-slate-500">Лимиты по категориям (автораспределение 50/30/20 при первом сохранении):</p>
+
+    {% for group, pct in group_percents.items() %}
+    <h3 class="font-semibold mt-4">
+        {% if group == 'needs' %}Нужды (50%){% elif group == 'wants' %}Желания (30%){% else %}Сбережения (20%){% endif %}
+    </h3>
+    {% for cat in categories if cat.group == group %}
+    <div class="flex items-center gap-3">
+        <label class="flex-1 text-sm">{{ cat.name }}</label>
+        <input type="text" name="limit_{{ cat.id }}" inputmode="decimal"
+            value="{{ limits_map.get(cat.id, 0) }}"
+            class="w-32 p-2 border rounded-lg text-right">
+    </div>
+    {% endfor %}
+    {% endfor %}
+
+    <button type="submit" class="w-full p-4 text-lg font-semibold bg-indigo-600 text-white rounded-xl">
+        Сохранить план
+    </button>
+</form>
+
+<form method="post" action="/plan/{{ year }}/{{ month }}" class="mt-4">
+    <input type="hidden" name="expected_income" value="{% if plan %}{{ plan.expected_income }}{% else %}0{% endif %}">
+    <button type="submit" class="w-full p-3 text-sm border rounded-xl hover:bg-slate-50">
+        Автораспределить 50/30/20 заново
+    </button>
+</form>
+{% endblock %}
