@@ -1,4 +1,12 @@
-# Доступ по IP: слушаем порты, а не hostname (надёжнее для tls internal)
+# Доступ по IP без домена.
+# HTTP/3 (QUIC) отключён — иначе браузер может давать ERR_SSL_PROTOCOL_ERROR,
+# если UDP/443 недоступен снаружи.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 :443 {
 	tls internal
 	reverse_proxy budget-app:8000

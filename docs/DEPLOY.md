@@ -196,39 +196,28 @@ sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMD
 | `unknown shorthand flag: 'f'` | `make install-compose` (от root) |
 | `table app_users already exists` | `make prod-migrate-stamp` |
 | 502 Bad Gateway | `make prod-logs`, `make prod-check` |
-| ERR_SSL_PROTOCOL_ERROR | `make prod-caddy-reset`, см. ниже |
+| ERR_SSL_PROTOCOL_ERROR | `git pull && make prod-rebuild` (отключён HTTP/3 в Caddyfile) |
+| `make rebuild` на VPS | Не использовать — только `make prod-rebuild` |
 | `.env not found` при деплое | `make setup && nano .env` |
 | Workflow падает на SSH | Проверить GitHub Secrets и `authorized_keys` |
 
 **ERR_SSL_PROTOCOL_ERROR при открытии https://194.154.29.93**
 
-1. Обновите код и перезапустите Caddy (исправлен `Caddyfile` — порты вместо IP):
+Частая причина — HTTP/3 (QUIC): браузер стучится по UDP/443, а порт снаружи недоступен.
 
 ```bash
 git pull origin main
-make prod-rebuild
-make prod-check
-```
-
-2. Если не помогло — сброс сертификатов Caddy:
-
-```bash
 make prod-caddy-reset
 make prod-check
 ```
 
-3. Проверьте, не занят ли 443 другим сервисом (Amnezia VPN):
+Проверка с вашего компьютера:
 
 ```bash
-sudo ss -tlnp | grep -E ':443|:80'
-make prod-logs
+curl -Ik https://194.154.29.93 --insecure
 ```
 
-4. Временный обход — HTTP (если редирект мешает, в `Caddyfile` замените блок `:80` на `reverse_proxy budget-app:8000`):
-
-```bash
-curl -I http://194.154.29.93
-```
+**Не запускайте `make rebuild` на VPS** — это локальный compose без Caddy. Только `make prod-rebuild`.
 
 **Логи приложения:**
 
