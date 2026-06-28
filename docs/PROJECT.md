@@ -318,11 +318,25 @@ make prod-migrate
 make prod-check
 ```
 
-### Автодеплой
+### Автодеплой (GitHub Actions)
 
-`git push origin main` → GitHub Actions → SSH → `make deploy`.
+```
+git push origin main  →  Actions  →  SSH deploy@VPS  →  make deploy
+```
 
-Секреты GitHub: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`.
+**Обязательные Secrets** (Settings → Secrets → Actions):
+
+| Secret | Пример |
+|--------|--------|
+| `VPS_HOST` | `194.154.29.93` |
+| `VPS_USER` | `deploy` |
+| `VPS_SSH_KEY` | приватный SSH-ключ |
+
+Без `VPS_HOST` workflow падает с `missing server host`.
+
+После push проверьте: GitHub → Actions → **Deploy** → зелёный статус → `make prod-check` на VPS.
+
+Подробная настройка: **[DEPLOY.md §3–5](DEPLOY.md#шаг-3-ssh-ключ-для-github-actions)**
 
 ### Важно
 
@@ -362,6 +376,7 @@ fin-home/
 ├── app/                    # Приложение FastAPI
 ├── alembic/                # Миграции БД
 ├── docs/
+│   ├── README.md           # Индекс документации
 │   ├── PROJECT.md          # ← этот файл
 │   ├── DEPLOY.md           # Деплой на VPS
 │   └── MAKEFILE.md         # Команды make
@@ -389,5 +404,6 @@ fin-home/
 ## Связанные документы
 
 - [README.md](../README.md) — быстрый старт
+- [docs/README.md](README.md) — индекс, чеклист, FAQ
 - [DEPLOY.md](DEPLOY.md) — пошаговый деплой
 - [MAKEFILE.md](MAKEFILE.md) — все команды `make`

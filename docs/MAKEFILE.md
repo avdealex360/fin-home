@@ -7,7 +7,7 @@ cd fin-home
 make help
 ```
 
-Документация: [PROJECT.md](PROJECT.md) · [DEPLOY.md](DEPLOY.md) · [README.md](../README.md)
+Документация: [README.md](README.md) · [PROJECT.md](PROJECT.md) · [DEPLOY.md](DEPLOY.md) · [README.md](../README.md)
 
 ---
 
@@ -108,8 +108,11 @@ make prod-up && make prod-migrate && make prod-check
 
 ### Деплой новой версии
 
-- Авто: `git push origin main`
+**Предварительно:** GitHub Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` ([DEPLOY.md §4](DEPLOY.md#шаг-4-секреты-github))
+
+- Авто: `git push origin main` → проверить Actions
 - Вручную на VPS: `make deploy` или `make prod-rebuild && make prod-migrate`
+- Проверка: `make prod-check`
 
 ### HTTPS не работает на VPS
 

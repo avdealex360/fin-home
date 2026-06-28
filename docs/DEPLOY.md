@@ -6,7 +6,7 @@
 **Репозиторий:** https://github.com/avdealex360/fin-home  
 **URL:** https://194.154.29.93
 
-Связанные документы: [PROJECT.md](PROJECT.md) · [MAKEFILE.md](MAKEFILE.md) · [README.md](../README.md)
+Связанные документы: [README.md](README.md) · [PROJECT.md](PROJECT.md) · [MAKEFILE.md](MAKEFILE.md) · [README.md](../README.md)
 
 ---
 
@@ -238,6 +238,7 @@ Telegram webhook заработает с валидным HTTPS-доменом.
 | ERR_SSL_PROTOCOL_ERROR | `rm -rf certs && make prod-certs && make prod-rebuild` |
 | `make rebuild` на VPS | **Не использовать** — только `make prod-rebuild` |
 | `.env not found` | `make setup && nano .env` |
+| `missing server host` (Actions) | Добавить Secret `VPS_HOST` = `194.154.29.93` |
 | SSH deploy падает | GitHub Secrets, `authorized_keys` |
 | prod-check FAIL на :443 | `make prod-caddy-reset`, проверить `certs/` |
 

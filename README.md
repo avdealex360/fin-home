@@ -26,11 +26,12 @@ make up             # Docker → http://127.0.0.1:8000
 
 | Документ | Описание |
 |----------|----------|
-| **[docs/PROJECT.md](docs/PROJECT.md)** | Полное описание: архитектура, бизнес-процессы, интерфейс |
-| **[docs/DEPLOY.md](docs/DEPLOY.md)** | Деплой на VPS, GitHub Actions, HTTPS, troubleshooting |
+| **[docs/README.md](docs/README.md)** | **Индекс:** с чего начать, чеклист, FAQ |
+| **[docs/PROJECT.md](docs/PROJECT.md)** | Архитектура, бизнес-процессы, интерфейс |
+| **[docs/DEPLOY.md](docs/DEPLOY.md)** | VPS, GitHub Actions, HTTPS |
 | **[docs/MAKEFILE.md](docs/MAKEFILE.md)** | Все команды `make` |
 
-Список команд в терминале: `make help`
+Список команд: `make help`
 
 ---
 
@@ -77,9 +78,11 @@ make setup && nano .env
 make prod-up && make prod-migrate && make prod-check
 ```
 
-HTTPS: self-signed сертификат для IP (`make prod-certs`). Браузер покажет предупреждение — это нормально.
+HTTPS: self-signed сертификат (`make prod-certs`). Браузер покажет предупреждение — это нормально.
 
-Подробно: **[docs/DEPLOY.md](docs/DEPLOY.md)**
+**GitHub Actions** (автодеплой): нужны Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` — см. [docs/DEPLOY.md §4](docs/DEPLOY.md#шаг-4-секреты-github).
+
+Подробно: **[docs/DEPLOY.md](docs/DEPLOY.md)** · **[docs/README.md](docs/README.md)**
 
 ---
 
