@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db import SessionLocal
@@ -42,6 +43,12 @@ app = FastAPI(title="Семейный бюджет", lifespan=lifespan)
 app.add_middleware(BasicAuthMiddleware)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse("app/static/favicon.svg", media_type="image/svg+xml")
+
 
 app.include_router(dashboard.router)
 app.include_router(transactions.router)
