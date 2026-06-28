@@ -38,4 +38,6 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd ${VPS_APP_PATH:-/opt/fin-home}
-            ./scripts/deploy.sh
+            git fetch origin main && git reset --hard origin/main
+            chmod +x scripts/*.sh
+            bash scripts/deploy.sh

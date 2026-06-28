@@ -18,7 +18,7 @@ compose() {
 
 wait_for_app() {
     local i
-    echo "==> Waiting for budget-app to start"
+    echo "==> Waiting for budget-app (up to 60s)"
     for i in $(seq 1 30); do
         if compose exec -T budget-app python -c "
 import urllib.error, urllib.request
@@ -31,19 +31,28 @@ except urllib.error.HTTPError as e:
 except Exception:
     raise SystemExit(1)
 " 2>/dev/null; then
-            echo "App ready (${i}s)"
+            echo "App ready (attempt $i)"
             return 0
         fi
+        echo "  ... not ready yet ($i/30)"
         sleep 2
     done
-    echo "ERROR: budget-app did not start in time"
-    compose logs --tail=50 budget-app
+    echo "ERROR: budget-app did not start"
+    compose logs --tail=80 budget-app
     return 1
 }
 
-echo "==> Fetch latest code"
-git fetch origin main
-git reset --hard origin/main
+# --- git pull (once); re-exec so bash runs the updated script ---
+if [ -z "${FIN_HOME_DEPLOY_REEXEC:-}" ]; then
+    echo "==> Fetch latest code"
+    git fetch origin main
+    git reset --hard origin/main
+    chmod +x scripts/*.sh 2>/dev/null || true
+    export FIN_HOME_DEPLOY_REEXEC=1
+    exec bash "$0" "$@"
+fi
+
+echo "==> Deploy fin-home ($(git rev-parse --short HEAD))"
 
 if [ ! -f .env ]; then
     echo "ERROR: .env not found. Copy from .env.example and configure secrets."
@@ -62,8 +71,7 @@ compose up -d --build
 
 wait_for_app
 
-echo "==> Run database migrations"
-compose exec -T budget-app python -c "from app.migrations import run_migrations; run_migrations()"
+# Migrations run in app lifespan on startup; no separate exec needed.
 
 echo "==> Health check"
 compose ps
