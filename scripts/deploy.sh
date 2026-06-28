@@ -2,9 +2,19 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/fin-home}"
-COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
 cd "$APP_DIR"
+
+compose() {
+    if docker compose version &>/dev/null; then
+        docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"
+    elif command -v docker-compose &>/dev/null; then
+        docker-compose -f docker-compose.yml -f docker-compose.prod.yml "$@"
+    else
+        echo "ERROR: docker compose not found. As root run: apt install docker-compose-plugin"
+        exit 1
+    fi
+}
 
 echo "==> Fetch latest code"
 git fetch origin main
@@ -18,14 +28,14 @@ fi
 mkdir -p data/backups
 
 echo "==> Build and start containers"
-$COMPOSE up -d --build
+compose up -d --build
 
 echo "==> Run database migrations"
-$COMPOSE exec -T budget-app alembic upgrade head
+compose exec -T budget-app python -c "from app.migrations import run_migrations; run_migrations()"
 
 echo "==> Health check"
-$COMPOSE ps
-$COMPOSE exec -T budget-app python -c "
+compose ps
+compose exec -T budget-app python -c "
 import urllib.error, urllib.request
 try:
     urllib.request.urlopen('http://127.0.0.1:8000/')

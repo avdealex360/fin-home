@@ -9,6 +9,19 @@
 - HTMX + Jinja2 + Tailwind CDN
 - Docker Compose
 
+## Быстрый старт
+
+```bash
+make setup          # .env + data/backups
+make up             # Docker, http://127.0.0.1:8000
+# или без Docker:
+make install && make dev
+```
+
+Логин/пароль — из `.env` (`APP_USER`, `APP_PASSWORD`).
+
+Полный список команд: **`make help`** или **[docs/MAKEFILE.md](docs/MAKEFILE.md)**.
+
 ## Функции
 
 - **Дашборд**: 50/30/20, долги, цели, советы, баланс вклада, доход в EUR
@@ -16,66 +29,61 @@
 - **Аналитика**: план vs факт, накопительный график, средний расход по категории
 - **Вклад**: калькулятор, график прогноза, история снимков
 - **Мультивалютность**: поле EUR при вводе дохода, курс EUR/RUB и EUR/USD
-- **Telegram**: `/add`, `/income`, `/balance` + cron-уведомления (`scripts/notify.py`)
+- **Telegram**: `/add`, `/income`, `/balance` + cron-уведомления
 
-## Быстрый старт
+## Команды (Makefile)
 
-```bash
-cp .env.example .env
-# Отредактируйте APP_USER и APP_PASSWORD
+| Задача | Команда |
+|--------|---------|
+| Локальный Docker | `make up` / `make down` / `make logs` |
+| Локальная разработка | `make dev` |
+| Тесты | `make test` |
+| Миграции | `make migrate` или `make migrate-local` |
+| Бэкап | `make backup` |
+| Production (VPS) | `make prod-up` / `make prod-logs` |
+| Деплой на сервере | `make deploy` |
 
-mkdir -p data/backups
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Или через Docker:
-
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
-
-Откройте http://127.0.0.1:8000 — браузер запросит логин/пароль из `.env`.
+Подробнее: **[docs/MAKEFILE.md](docs/MAKEFILE.md)**
 
 ## Первые шаги
 
 1. Заполните **План** на текущий месяц (ожидаемый доход)
 2. Проверьте долги и цели в **Настройках** (предзаполнены при первом запуске)
-3. Начните вносить операции с дашборда или страницы «Операция»
+3. Вносите операции с дашборда
 
-## Бэкап
+## Деплой на VPS
+
+Автодеплой при `git push origin main`. Инструкция: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ```bash
-chmod +x scripts/backup.sh
-./scripts/backup.sh
+# на VPS (root, один раз)
+make vps-setup
+
+# на VPS (deploy)
+make setup && nano .env
+make prod-up && make prod-migrate
 ```
 
-Cron (ежедневно в 3:00):
-
-```
-0 3 * * * DATA_DIR=/path/to/fin-home/data /path/to/fin-home/scripts/backup.sh
-```
+Prod URL: **https://194.154.29.93**
 
 ## Telegram-бот (опционально)
 
 1. Создайте бота через @BotFather
-2. Добавьте в `.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_IDS` (ваш user id)
-3. Установите webhook: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-domain/telegram/webhook`
-4. Уведомления: `0 9 * * * python /path/to/scripts/notify.py`
+2. Добавьте в `.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_IDS`
+3. Webhook: `https://your-domain/telegram/webhook`
+4. Уведомления: `make notify` или cron `0 9 * * * cd /opt/fin-home && make notify`
 
-## Деплой на VPS
+## Бэкап
 
-Автодеплой через GitHub Actions при push в `main`. Подробная инструкция: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+```bash
+make backup
+```
 
-Кратко:
+Cron на VPS:
 
-1. На VPS: `bash scripts/vps-setup.sh` (от root)
-2. Создать `.env` на сервере, первый запуск через `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
-3. Добавить GitHub Secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
-4. `git push origin main` — деплой автоматически
-
-Prod URL: **https://194.154.29.93** (самоподписанный сертификат до появления домена).
+```
+0 3 * * * cd /opt/fin-home && make prod-backup >> /var/log/fin-home-backup.log 2>&1
+```
 
 ## Переезд на другой VPS
 
@@ -83,5 +91,10 @@ Prod URL: **https://194.154.29.93** (самоподписанный сертиф
 tar -czf budget-backup.tar.gz data/ docker-compose.yml .env
 scp budget-backup.tar.gz user@new-vps:~/
 # на новом VPS:
-tar -xzf budget-backup.tar.gz && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+tar -xzf budget-backup.tar.gz && make prod-up
 ```
+
+## Документация
+
+- [docs/MAKEFILE.md](docs/MAKEFILE.md) — все команды `make`
+- [docs/DEPLOY.md](docs/DEPLOY.md) — деплой на VPS через GitHub Actions

@@ -4,8 +4,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.middleware.auth import BasicAuthMiddleware
+from app.migrations import run_migrations
 from app.routers import analytics, dashboard, deposit, goals, plan, settings, telegram, transactions
 from app.seed import seed_database
 
@@ -16,7 +17,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    run_migrations()
     db = SessionLocal()
     try:
         seed_database(db)

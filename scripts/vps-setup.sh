@@ -20,6 +20,16 @@ if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com | sh
 fi
 
+if ! docker compose version &>/dev/null; then
+    echo "Compose plugin missing, running install-compose.sh..."
+    bash "$(dirname "$0")/install-compose.sh"
+fi
+
+if ! docker compose version &>/dev/null; then
+    echo "ERROR: docker compose still not available. Run as root: bash scripts/install-compose.sh"
+    exit 1
+fi
+
 echo "==> Create deploy user"
 if ! id "$DEPLOY_USER" &>/dev/null; then
     useradd -m -s /bin/bash "$DEPLOY_USER"

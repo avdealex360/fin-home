@@ -5,10 +5,12 @@
 **VPS:** `194.154.29.93` (Ubuntu 24.04)  
 **Репозиторий:** https://github.com/avdealex360/fin-home
 
+Команды ниже можно заменить на **`make`** — полный справочник: [MAKEFILE.md](MAKEFILE.md).
+
 ## Архитектура
 
 ```
-git push main → GitHub Actions → SSH → scripts/deploy.sh
+git push main → GitHub Actions → SSH → make deploy
                                               ↓
                                     docker compose (prod)
                                               ↓
@@ -27,11 +29,10 @@ git push main → GitHub Actions → SSH → scripts/deploy.sh
 ssh root@194.154.29.93
 ```
 
-Скопируйте и запустите скрипт (после первого push с деплоем в репозиторий):
-
 ```bash
 git clone https://github.com/avdealex360/fin-home.git /opt/fin-home
-bash /opt/fin-home/scripts/vps-setup.sh
+cd /opt/fin-home
+make vps-setup
 ```
 
 Или до push — с локальной машины:
@@ -41,14 +42,22 @@ scp scripts/vps-setup.sh root@194.154.29.93:/tmp/
 ssh root@194.154.29.93 'bash /tmp/vps-setup.sh'
 ```
 
-Скрипт установит Docker, создаст пользователя `deploy`, настроит UFW (22, 80, 443) и клонирует репозиторий в `/opt/fin-home`.
+Скрипт установит Docker, Compose, пользователя `deploy`, UFW (22, 80, 443) и клонирует репозиторий.
+
+### Docker Compose не найден
+
+Часто на VPS с Amnezia Docker есть, а Compose — нет. От root:
+
+```bash
+cd /opt/fin-home
+make install-compose
+docker compose version
+```
 
 ### Ограничить доступ только через VPN (опционально)
 
-Если Amnezia VPN использует подсеть, например `10.8.0.0/24`:
-
 ```bash
-VPN_CIDR=10.8.0.0/24 bash /opt/fin-home/scripts/vps-setup.sh
+VPN_CIDR=10.8.0.0/24 make vps-setup
 ```
 
 ---
@@ -58,7 +67,7 @@ VPN_CIDR=10.8.0.0/24 bash /opt/fin-home/scripts/vps-setup.sh
 ```bash
 ssh deploy@194.154.29.93
 cd /opt/fin-home
-cp .env.example .env
+make setup
 nano .env
 ```
 
@@ -73,14 +82,17 @@ APP_SECRET=случайная_строка_32_символа
 Первый запуск:
 
 ```bash
-mkdir -p data/backups
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T budget-app alembic upgrade head
+make prod-up
+make prod-migrate
 ```
 
-Откройте в браузере: **https://194.154.29.93**
+Если миграции падают с `table app_users already exists`:
 
-Браузер покажет предупреждение о самоподписанном сертификате — это нормально без домена. Нажмите «Продолжить» / «Advanced → Proceed».
+```bash
+make prod-migrate-stamp
+```
+
+Откройте: **https://194.154.29.93** (примите предупреждение о самоподписанном сертификате).
 
 ---
 
@@ -93,7 +105,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/fin-home-deploy -N ""
 cat ~/.ssh/fin-home-deploy.pub
 ```
 
-Публичный ключ добавьте на VPS:
+Публичный ключ на VPS:
 
 ```bash
 ssh root@194.154.29.93
@@ -114,64 +126,54 @@ ssh -i ~/.ssh/fin-home-deploy deploy@194.154.29.93 'echo OK'
 
 ## Шаг 4. Секреты в GitHub
 
-Репозиторий → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
+Repo → **Settings** → **Secrets and variables** → **Actions**:
 
 | Secret | Значение |
 |--------|----------|
 | `VPS_HOST` | `194.154.29.93` |
 | `VPS_USER` | `deploy` |
-| `VPS_SSH_KEY` | содержимое файла `~/.ssh/fin-home-deploy` (приватный ключ целиком) |
-
-Опционально:
-
-| Secret | Значение |
-|--------|----------|
-| `VPS_APP_PATH` | `/opt/fin-home` (по умолчанию) |
+| `VPS_SSH_KEY` | приватный ключ `~/.ssh/fin-home-deploy` целиком |
 
 ---
 
 ## Шаг 5. Автодеплой
 
-Каждый push в `main` запускает workflow **Deploy**:
-
 ```bash
 git push origin main
 ```
 
-Проверка: GitHub → **Actions** → последний run должен быть зелёным.
+Проверка: GitHub → **Actions** → workflow **Deploy**.
 
 На VPS:
 
 ```bash
-ssh deploy@194.154.29.93
-cd /opt/fin-home
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50
+make prod-ps
+make prod-logs
 ```
 
-Ручной деплой без push:
+Ручной деплой:
 
 ```bash
-ssh deploy@194.154.29.93 'cd /opt/fin-home && ./scripts/deploy.sh'
+ssh deploy@194.154.29.93 'cd /opt/fin-home && make deploy'
 ```
 
-Или в GitHub: **Actions** → **Deploy** → **Run workflow**.
+Или: GitHub → **Actions** → **Deploy** → **Run workflow**.
 
 ---
 
 ## Шаг 6. Бэкап базы
 
-Ежедневный cron на VPS (от root или deploy):
-
 ```bash
-crontab -e
+make prod-backup
 ```
 
+Cron на VPS:
+
 ```
-0 3 * * * DATA_DIR=/opt/fin-home/data /opt/fin-home/scripts/backup.sh >> /var/log/fin-home-backup.log 2>&1
+0 3 * * * cd /opt/fin-home && make prod-backup >> /var/log/fin-home-backup.log 2>&1
 ```
 
-Восстановление из дампа:
+Восстановление:
 
 ```bash
 sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMDD.sql
@@ -181,48 +183,51 @@ sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMD
 
 ## Когда появится домен
 
-1. Направьте A-запись домена на `194.154.29.93`.
-2. В [`Caddyfile`](../Caddyfile) замените IP на домен и уберите `tls internal`:
-
-```
-budget.example.com {
-    reverse_proxy budget-app:8000
-}
-```
-
-3. Перезапустите: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d caddy`
-
-Caddy автоматически получит сертификат Let's Encrypt.
+1. A-запись домена → `194.154.29.93`
+2. В [`Caddyfile`](../Caddyfile) замените IP на домен, уберите `tls internal`
+3. `make prod-restart` или `make prod-rebuild`
 
 ---
 
 ## Устранение неполадок
 
-**Workflow падает на SSH**
+| Проблема | Решение |
+|----------|---------|
+| `unknown shorthand flag: 'f'` | `make install-compose` (от root) |
+| `table app_users already exists` | `make prod-migrate-stamp` |
+| 502 Bad Gateway | `make prod-logs` |
+| `.env not found` при деплое | `make setup && nano .env` |
+| Workflow падает на SSH | Проверить GitHub Secrets и `authorized_keys` |
 
-- Проверьте секреты `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`.
-- Убедитесь, что ключ `deploy` в `authorized_keys`.
-
-**502 Bad Gateway**
+**Логи приложения:**
 
 ```bash
+make prod-logs
+# только budget-app:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs budget-app
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs caddy
 ```
 
-**`.env not found` при деплое**
-
-Файл `.env` не в git — создайте его на VPS вручную (шаг 2).
-
-**Миграции**
+**Локальная разработка без Caddy:**
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec budget-app alembic upgrade head
-```
-
-**Локальная разработка без Caddy**
-
-```bash
-docker compose up -d --build
+make up
 # http://127.0.0.1:8000
 ```
+
+---
+
+## Справочник make-команд
+
+| Команда | Где |
+|---------|-----|
+| `make prod-up` | Поднять prod на VPS |
+| `make prod-down` | Остановить |
+| `make prod-rebuild` | Пересобрать после git pull |
+| `make prod-migrate` | Миграции |
+| `make prod-migrate-stamp` | Исправить конфликт Alembic |
+| `make prod-backup` | Бэкап SQLite |
+| `make deploy` | Полный деплой (git pull + rebuild) |
+| `make install-compose` | Установить Compose (root) |
+| `make vps-setup` | Первичная настройка VPS (root) |
+
+Полный список: [MAKEFILE.md](MAKEFILE.md)
