@@ -1,6 +1,5 @@
-# Доступ по IP без домена.
-# HTTP/3 (QUIC) отключён — иначе браузер может давать ERR_SSL_PROTOCOL_ERROR,
-# если UDP/443 недоступен снаружи.
+# HTTPS по IP: свой сертификат (scripts/gen-certs.sh).
+# tls internal на :443 без домена ломает TLS handshake.
 {
 	servers {
 		protocols h1 h2
@@ -8,7 +7,7 @@
 }
 
 :443 {
-	tls internal
+	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy budget-app:8000
 }
 

@@ -12,7 +12,7 @@ UVICORN ?= uvicorn
 .PHONY: help setup install dev test \
         up down restart rebuild logs ps shell \
         prod-up prod-down prod-restart prod-rebuild prod-logs prod-ps prod-shell \
-        prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset \
+        prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset prod-certs \
         migrate migrate-local migrate-stamp \
         backup notify deploy install-compose vps-setup
 
@@ -54,7 +54,8 @@ down: ## Остановить локальные контейнеры
 restart: ## Перезапустить локальные контейнеры
 	$(COMPOSE_LOCAL) restart
 
-rebuild: setup ## Пересобрать и поднять локальные контейнеры
+rebuild: setup ## Пересобрать локальные контейнеры (НЕ для VPS — используйте prod-rebuild)
+	@echo "⚠  На VPS нужен: make prod-rebuild"
 	$(COMPOSE_LOCAL) up -d --build --force-recreate
 
 logs: ## Логи локальных контейнеров (follow)
@@ -77,7 +78,10 @@ backup: setup ## Бэкап SQLite в data/backups/
 
 # --- Docker: production (Caddy + HTTPS) ---
 
-prod-up: setup ## Поднять prod-стек (Caddy :443 + app)
+prod-certs: ## Сгенерировать self-signed сертификат для IP
+	@./scripts/gen-certs.sh
+
+prod-up: setup prod-certs ## Поднять prod-стек (Caddy :443 + app)
 	$(COMPOSE_PROD) up -d --build
 
 prod-down: ## Остановить prod-стек
@@ -107,7 +111,7 @@ prod-migrate-stamp: ## Alembic stamp head в prod-стеке
 prod-check: ## Проверить prod: caddy → app
 	./scripts/prod-check.sh
 
-prod-caddy-reset: prod-down ## Сбросить сертификаты Caddy и поднять заново
+prod-caddy-reset: prod-down ## Сбросить кэш Caddy и поднять заново
 	-docker volume rm fin-home_caddy_data fin-home_caddy_config 2>/dev/null
 	$(MAKE) prod-up
 

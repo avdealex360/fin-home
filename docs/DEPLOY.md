@@ -196,7 +196,7 @@ sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMD
 | `unknown shorthand flag: 'f'` | `make install-compose` (от root) |
 | `table app_users already exists` | `make prod-migrate-stamp` |
 | 502 Bad Gateway | `make prod-logs`, `make prod-check` |
-| ERR_SSL_PROTOCOL_ERROR | `git pull && make prod-rebuild` (отключён HTTP/3 в Caddyfile) |
+| ERR_SSL_PROTOCOL_ERROR | `make prod-certs && make prod-rebuild` (не `tls internal`) |
 | `make rebuild` на VPS | Не использовать — только `make prod-rebuild` |
 | `.env not found` при деплое | `make setup && nano .env` |
 | Workflow падает на SSH | Проверить GitHub Secrets и `authorized_keys` |
