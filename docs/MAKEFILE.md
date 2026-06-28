@@ -75,7 +75,8 @@ make prod-logs
 | `make prod-shell` | Shell в prod-контейнере |
 | `make prod-migrate` | Миграции в prod |
 | `make prod-migrate-stamp` | Stamp head в prod |
-| `make prod-backup` | Бэкап на сервере |
+| `make prod-check` | Диагностика caddy → app |
+| `make prod-caddy-reset` | Сброс TLS Caddy и перезапуск |
 | **VPS** | |
 | `make deploy` | Запуск `scripts/deploy.sh` (на сервере) |
 | `make install-compose` | Установить Docker Compose plugin (root) |

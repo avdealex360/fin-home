@@ -1,8 +1,9 @@
-194.154.29.93 {
+# Доступ по IP: слушаем порты, а не hostname (надёжнее для tls internal)
+:443 {
 	tls internal
 	reverse_proxy budget-app:8000
 }
 
-http://194.154.29.93 {
-	redir https://{host}{uri}
+:80 {
+	redir https://{host}{uri} permanent
 }

@@ -12,7 +12,7 @@ UVICORN ?= uvicorn
 .PHONY: help setup install dev test \
         up down restart rebuild logs ps shell \
         prod-up prod-down prod-restart prod-rebuild prod-logs prod-ps prod-shell \
-        prod-migrate prod-migrate-stamp prod-backup \
+        prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset \
         migrate migrate-local migrate-stamp \
         backup notify deploy install-compose vps-setup
 
@@ -103,6 +103,21 @@ prod-migrate: ## Миграции в prod-стеке
 
 prod-migrate-stamp: ## Alembic stamp head в prod-стеке
 	$(COMPOSE_PROD) exec -T budget-app alembic stamp head
+
+prod-check: ## Проверить prod: caddy → app
+	@echo "==> budget-app (внутри сети)"
+	@$(COMPOSE_PROD) exec -T budget-app python -c "import urllib.error,urllib.request;\
+try: urllib.request.urlopen('http://127.0.0.1:8000/')\
+except urllib.error.HTTPError as e: assert e.code in (200,401)"
+	@echo "OK"
+	@echo "==> caddy :443"
+	@$(COMPOSE_PROD) exec -T caddy wget -qO- --timeout=5 --no-check-certificate https://127.0.0.1/ >/dev/null && echo OK || echo FAIL
+	@echo "==> caddy :80 → redirect"
+	@$(COMPOSE_PROD) exec -T caddy wget -qSO- --timeout=5 http://127.0.0.1/ 2>&1 | head -5
+
+prod-caddy-reset: prod-down ## Сбросить сертификаты Caddy и поднять заново
+	-docker volume rm fin-home_caddy_data fin-home_caddy_config 2>/dev/null
+	$(MAKE) prod-up
 
 prod-backup: ## Бэкап на сервере (DATA_DIR=./data)
 	DATA_DIR=./data ./scripts/backup.sh
