@@ -107,13 +107,41 @@ chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
 
 ## Шаг 4. Секреты GitHub
 
-Settings → Secrets → Actions:
+**Без этих секретов Actions падает с `missing server host`.**
+
+Откройте: https://github.com/avdealex360/fin-home/settings/secrets/actions → **New repository secret**
 
 | Secret | Значение |
 |--------|----------|
 | `VPS_HOST` | `194.154.29.93` |
 | `VPS_USER` | `deploy` |
-| `VPS_SSH_KEY` | приватный ключ целиком |
+| `VPS_SSH_KEY` | содержимое **приватного** ключа (весь файл, включая `-----BEGIN OPENSSH PRIVATE KEY-----`) |
+
+Как получить ключ (если ещё не создавали):
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/fin-home-deploy -N ""
+cat ~/.ssh/fin-home-deploy      # → VPS_SSH_KEY
+cat ~/.ssh/fin-home-deploy.pub  # → authorized_keys на VPS
+```
+
+Публичный ключ на VPS:
+
+```bash
+ssh root@194.154.29.93
+mkdir -p /home/deploy/.ssh
+echo "СОДЕРЖИМОЕ .pub" >> /home/deploy/.ssh/authorized_keys
+chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
+```
+
+Проверка:
+
+```bash
+ssh -i ~/.ssh/fin-home-deploy deploy@194.154.29.93 'echo OK'
+```
+
+После добавления секретов: **Actions → Deploy → Run workflow** или `git push origin main`.
 
 ---
 

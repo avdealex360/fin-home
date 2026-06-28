@@ -9,6 +9,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Check secrets
+        run: |
+          missing=0
+          [ -z "${{ secrets.VPS_HOST }}" ] && echo "::error::Secret VPS_HOST не задан. Settings → Secrets → Actions" && missing=1
+          [ -z "${{ secrets.VPS_USER }}" ] && echo "::error::Secret VPS_USER не задан (обычно: deploy)" && missing=1
+          [ -z "${{ secrets.VPS_SSH_KEY }}" ] && echo "::error::Secret VPS_SSH_KEY не задан (приватный SSH-ключ)" && missing=1
+          [ "$missing" -eq 1 ] && exit 1
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.2.0
         with:
