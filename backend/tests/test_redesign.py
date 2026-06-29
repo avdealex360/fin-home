@@ -42,3 +42,23 @@ def test_model_shape(db):
     # IncomeAllocation has to_deposit
     a = m.IncomeAllocation(income_tx_id=1, amount=Decimal("5"), allocation_level=4, to_deposit=True)
     assert a.to_deposit is True
+
+
+from app.seed import load_demo_data, ensure_settings
+from app.models import Category, SinkingFund, Setting
+
+
+def test_seed_no_savings_categories_no_goals(db):
+    ensure_settings(db)
+    load_demo_data(db)
+
+    groups = {c.group for c in db.query(Category).all()}
+    assert "savings" not in groups
+    assert groups <= {"needs", "wants", "income"}
+
+    funds = db.query(SinkingFund).all()
+    assert funds, "demo should create копилки"
+    assert all(f.group in ("wants", "savings") for f in funds)
+    assert any(f.group == "savings" for f in funds)
+
+    assert db.query(Setting).filter(Setting.key == "deposit_monthly_target").first() is not None
