@@ -20,12 +20,14 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.drop_table("goal_contributions")
     op.drop_table("goals")
-    op.add_column("income_allocations", sa.Column("to_deposit", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.add_column("sinking_funds", sa.Column("group", sa.String(length=20), nullable=False, server_default="savings"))
-    op.add_column("sinking_funds", sa.Column("icon", sa.String(length=64), nullable=True))
-    op.add_column("sinking_funds", sa.Column("color", sa.String(length=16), nullable=True))
-    op.drop_column("sinking_funds", "category_group")
-    op.drop_column("sinking_funds", "linked_category_id")
+    with op.batch_alter_table("income_allocations") as batch_op:
+        batch_op.add_column(sa.Column("to_deposit", sa.Boolean(), nullable=False, server_default=sa.false()))
+    with op.batch_alter_table("sinking_funds") as batch_op:
+        batch_op.add_column(sa.Column("group", sa.String(length=20), nullable=False, server_default="savings"))
+        batch_op.add_column(sa.Column("icon", sa.String(length=64), nullable=True))
+        batch_op.add_column(sa.Column("color", sa.String(length=16), nullable=True))
+        batch_op.drop_column("category_group")
+        batch_op.drop_column("linked_category_id")
     op.create_table(
         "deposit_contributions",
         sa.Column("id", sa.Integer(), primary_key=True),
