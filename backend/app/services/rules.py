@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Category, Debt, Goal, MonthlyPlan, SinkingFund, Transaction
+from app.models import Category, Debt, MonthlyPlan, SinkingFund, Transaction  # Goal removed in two-pots redesign (Task 1)
 from app.services.allocation import get_unallocated_total
 from app.services.settings_store import get_setting, set_setting
 from app.services.dashboard import DashboardService

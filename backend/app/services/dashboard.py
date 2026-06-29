@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Category, Goal, MonthlyPlan, Transaction
+from app.models import Category, MonthlyPlan, Transaction  # Goal removed in two-pots redesign (Task 1)
 from app.seed import GROUP_PERCENTS
 from app.services.allocation import get_unallocated_total, is_month_fully_allocated
 from app.services.debts import get_active_debts_sorted, monthly_interest_cost

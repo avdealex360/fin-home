@@ -1,9 +1,10 @@
+from __future__ import annotations  # keep Goal type hints as strings (Task 1 — Goal removed; full rewrite later)
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Goal, Transaction
+from app.models import Transaction  # Goal removed in two-pots redesign (Task 1)
 from app.services.deposit_calc import build_forecast
 from app.services.plan import DepositService
 

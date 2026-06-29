@@ -11,8 +11,8 @@ from app.models import (
     Category,
     Debt,
     DebtPayment,
-    Goal,
-    GoalContribution,
+    # Goal,           # removed in two-pots redesign (Task 1)
+    # GoalContribution,  # removed in two-pots redesign (Task 1)
     MonthlyPlan,
     PlannedDebtPayment,
     PlannedExpense,
@@ -67,38 +67,15 @@ def fund_dict(f: SinkingFund) -> dict:
         "current_amount": float(f.current_amount),
         "monthly_contribution": float(f.monthly_contribution),
         "target_date": f.target_date.isoformat() if f.target_date else None,
-        "category_group": f.category_group,
+        "group": f.group,  # renamed from category_group in two-pots redesign
         "is_rolling": f.is_rolling,
-        "linked_category_id": f.linked_category_id,
         "is_active": f.is_active,
         "progress_percent": min(progress, 100.0),
     }
 
 
-def goal_dict(g: Goal) -> dict:
-    progress = float(g.current_amount / g.target_amount * 100) if g.target_amount > 0 else 0.0
-    return {
-        "id": g.id,
-        "name": g.name,
-        "target_amount": float(g.target_amount),
-        "current_amount": float(g.current_amount),
-        "deadline": g.deadline.isoformat() if g.deadline else None,
-        "monthly_contribution": float(g.monthly_contribution),
-        "linked_account_name": g.linked_account_name,
-        "linked_category_id": g.linked_category_id,
-        "is_active": g.is_active,
-        "progress_percent": min(progress, 100.0),
-    }
-
-
-def goal_contribution_dict(c: GoalContribution) -> dict:
-    return {
-        "id": c.id,
-        "goal_id": c.goal_id,
-        "amount": float(c.amount),
-        "date": c.date.isoformat() if c.date else None,
-        "comment": c.comment,
-    }
+# goal_dict and goal_contribution_dict removed in two-pots redesign (Task 1)
+# Full rewrite comes in Tasks 6 and 9.
 
 
 def debt_dict(d: Debt) -> dict:

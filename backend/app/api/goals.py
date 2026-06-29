@@ -10,13 +10,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Goal, GoalContribution
-from app.serializers import goal_dict
-from app.services.goals import (
-    cascade_goal_scenario,
-    goal_forecast_rows,
-    months_to_goal_with_capitalization,
-)
+# Goal, GoalContribution removed in two-pots redesign (Task 1); full rewrite in later tasks
+# from app.models import Goal, GoalContribution
+# from app.serializers import goal_dict
+# from app.services.goals import (
+#     cascade_goal_scenario,
+#     goal_forecast_rows,
+#     months_to_goal_with_capitalization,
+# )
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 

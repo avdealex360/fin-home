@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Category, Debt, Goal, Setting, SinkingFund
+from app.models import AppUser, Category, Debt, Setting, SinkingFund  # Goal removed in two-pots redesign (Task 1)
 
 GROUP_PERCENTS = {"needs": 50, "wants": 30, "savings": 20}
 

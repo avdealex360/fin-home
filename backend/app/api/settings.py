@@ -15,7 +15,7 @@ from app.serializers import (
     category_dict,
     debt_dict,
     fund_dict,
-    goal_dict,
+    # goal_dict,  # removed in two-pots redesign (Task 1)
     transaction_dict,
 )
 from app.services.exchange import update_eur_usd_rate
