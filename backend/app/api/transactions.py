@@ -1,0 +1,105 @@
+from __future__ import annotations
+"""Transactions CRUD. Income transactions can be allocated afterwards."""
+
+from datetime import date
+date_type = date
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import extract
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.models import Transaction
+from app.serializers import transaction_dict
+from app.services.allocation import get_unallocated_for_tx
+from app.services.goals import remove_goal_from_transaction, sync_goal_from_transaction
+
+router = APIRouter(prefix="/api/transactions", tags=["transactions"])
+
+
+class TransactionBody(BaseModel):
+    type: str  # income | expense | transfer
+    amount: Decimal
+    date: date_type | None = None
+    category_id: int | None = None
+    user_id: int | None = None
+    comment: str | None = None
+    base_amount_eur: Decimal | None = None
+    exchange_rate: Decimal | None = None
+
+
+@router.get("")
+def list_transactions(
+    year: int | None = None,
+    month: int | None = None,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    q = db.query(Transaction)
+    if year:
+        q = q.filter(extract("year", Transaction.date) == year)
+    if month:
+        q = q.filter(extract("month", Transaction.date) == month)
+    rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(limit).all()
+    return [transaction_dict(t) for t in rows]
+
+
+@router.post("")
+def create_transaction(body: TransactionBody, db: Session = Depends(get_db)):
+    tx = Transaction(
+        type=body.type,
+        amount=body.amount,
+        date=body.date or date.today(),
+        category_id=body.category_id,
+        user_id=body.user_id,
+        comment=body.comment,
+        base_amount_eur=body.base_amount_eur,
+        exchange_rate=body.exchange_rate,
+    )
+    db.add(tx)
+    db.flush()
+    if tx.type in ("expense", "transfer"):
+        sync_goal_from_transaction(db, tx)
+    db.commit()
+    db.refresh(tx)
+    result = transaction_dict(tx)
+    if tx.type == "income":
+        result["unallocated"] = float(get_unallocated_for_tx(db, tx))
+    return result
+
+
+@router.patch("/{tx_id}")
+def update_transaction(tx_id: int, body: TransactionBody, db: Session = Depends(get_db)):
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    if not tx:
+        raise HTTPException(404, "transaction not found")
+    # Reverse the old goal impact before applying the new values.
+    remove_goal_from_transaction(db, tx)
+    tx.type = body.type
+    tx.amount = body.amount
+    if body.date:
+        tx.date = body.date
+    tx.category_id = body.category_id
+    tx.user_id = body.user_id
+    tx.comment = body.comment
+    tx.base_amount_eur = body.base_amount_eur
+    tx.exchange_rate = body.exchange_rate
+    db.flush()
+    if tx.type in ("expense", "transfer"):
+        sync_goal_from_transaction(db, tx)
+    db.commit()
+    db.refresh(tx)
+    return transaction_dict(tx)
+
+
+@router.delete("/{tx_id}")
+def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    if not tx:
+        return {"ok": True}
+    remove_goal_from_transaction(db, tx)
+    db.delete(tx)
+    db.commit()
+    return {"ok": True}

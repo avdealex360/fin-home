@@ -10,6 +10,9 @@ services:
     ports:
       - "80:80/tcp"
       - "443:443/tcp"
+    environment:
+      - APP_USER=${APP_USER}
+      - APP_PASSWORD_HASH=${APP_PASSWORD_HASH}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./certs:/certs:ro

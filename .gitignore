@@ -8,3 +8,8 @@ __pycache__/
 venv/
 *.db
 .DS_Store
+node_modules/
+frontend/dist/
+static_spa/
+.idea/
+.claude/

@@ -14,7 +14,7 @@ UVICORN ?= uvicorn
         prod-up prod-down prod-restart prod-rebuild prod-logs prod-ps prod-shell \
         prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset prod-certs \
         migrate migrate-local migrate-stamp \
-        backup notify deploy install-compose vps-setup
+        backup deploy install-compose vps-setup
 
 help: ## Показать все команды
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -26,22 +26,29 @@ setup: ## Создать .env (если нет) и каталог data/backups
 	@mkdir -p data/backups
 	@echo "OK: .env и data/backups готовы"
 
-install: setup ## Установить Python-зависимости локально
-	$(PYTHON) -m pip install -r requirements.txt
+install: setup ## Установить зависимости backend (venv через uv) и frontend
+	cd backend && uv venv --python 3.12 .venv && uv pip install --python .venv -r requirements.txt
+	cd frontend && npm install
 
 # --- Локальная разработка (без Docker) ---
+# Запускать в двух терминалах: `make dev-api` и `make dev-web`.
 
-dev: setup ## Запустить uvicorn с hot-reload на :8000
-	$(UVICORN) app.main:app --reload --host 127.0.0.1 --port 8000
+dev-api: setup ## Backend API с hot-reload на :8000
+	cd backend && .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
-test: ## Запустить тесты
-	$(PYTHON) -m pytest tests/ -v
+dev-web: ## Frontend (Vite) на :5173, проксирует /api на :8000
+	cd frontend && npm run dev
+
+dev: dev-api ## Алиас для dev-api
+
+test: ## Запустить тесты backend
+	cd backend && .venv/bin/python -m pytest tests/ -v
+
+hash-password: ## Сгенерировать bcrypt-хэш пароля для Caddy basic_auth
+	@docker run --rm caddy:2-alpine caddy hash-password --plaintext "$(p)"
 
 migrate-local: setup ## Миграции Alembic локально (без Docker)
-	$(PYTHON) -c "from app.migrations import run_migrations; run_migrations()"
-
-notify: setup ## Отправить Telegram-уведомления (scripts/notify.py)
-	$(PYTHON) scripts/notify.py
+	cd backend && .venv/bin/python -c "from app.migrations import run_migrations; run_migrations()"
 
 # --- Docker: локальная разработка ---
 

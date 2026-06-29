@@ -1,0 +1,186 @@
+<script lang="ts">
+  import { api, type Category, type DebtSummary } from '../lib/api'
+  import { period, dataVersion, invalidate, showToast } from '../lib/stores'
+  import { money, monthName, shiftMonth } from '../lib/format'
+
+  let plan = $state<any>(null)
+  let categories = $state<Category[]>([])
+  let debts = $state<DebtSummary[]>([])
+  let income = $state(0)
+  let limits = $state<Record<number, number>>({})
+  let saving = $state(false)
+
+  let newExp = $state({ description: '', amount: 0 })
+  let newDebt = $state({ debt_id: 0, amount: 0 })
+
+  $effect(() => {
+    const { year, month } = $period
+    void $dataVersion
+    load(year, month)
+  })
+
+  async function load(year: number, month: number) {
+    const [p, cats, ds] = await Promise.all([api.plan(year, month), api.categories(), api.debts()])
+    plan = p
+    categories = cats.filter((c) => c.group !== 'income')
+    debts = ds
+    income = p.expected_income
+    const m: Record<number, number> = {}
+    for (const c of categories) {
+      const l = p.limits?.find((x: any) => x.category_id === c.id)
+      m[c.id] = l ? l.limit_amount + (l.carried_over || 0) : 0
+    }
+    limits = m
+  }
+
+  function changeMonth(delta: number) {
+    const [y, m] = shiftMonth($period.year, $period.month, delta)
+    period.set({ year: y, month: m })
+  }
+
+  async function recalc() {
+    saving = true
+    await api.savePlan({ expected_income: income, auto_distribute: true }, $period.year, $period.month)
+    saving = false
+    invalidate()
+    showToast('План пересчитан по 50/30/20')
+  }
+
+  async function saveLimits() {
+    await api.saveLimits(limits, $period.year, $period.month)
+    invalidate()
+    showToast('Лимиты сохранены')
+  }
+
+  async function addExpense() {
+    if (!newExp.description || newExp.amount <= 0) return
+    await api.addPlannedExpense(newExp, $period.year, $period.month)
+    newExp = { description: '', amount: 0 }
+    invalidate()
+  }
+  async function delExpense(id: number) {
+    await api.deletePlannedExpense(id)
+    invalidate()
+  }
+  async function addDebt() {
+    if (!newDebt.debt_id || newDebt.amount <= 0) return
+    await api.addPlannedDebt(newDebt, $period.year, $period.month)
+    newDebt = { debt_id: 0, amount: 0 }
+    invalidate()
+  }
+  async function delDebt(id: number) {
+    await api.deletePlannedDebt(id)
+    invalidate()
+  }
+
+  async function closeMonth() {
+    if (!confirm('Закрыть месяц? Остатки лимитов перенесутся на следующий.')) return
+    await api.closeMonth($period.year, $period.month)
+    invalidate()
+    showToast('Месяц закрыт, остатки перенесены')
+  }
+
+  const groupLabel: Record<string, string> = { needs: 'Нужды', wants: 'Желания', savings: 'Сбережения' }
+</script>
+
+<div class="page-header">
+  <button class="btn-ghost btn-sm" onclick={() => changeMonth(-1)} aria-label="Прошлый месяц"><i class="ti ti-chevron-left"></i></button>
+  <h1>{monthName($period.month)} {$period.year}</h1>
+  <button class="btn-ghost btn-sm" onclick={() => changeMonth(1)} aria-label="Следующий месяц"><i class="ti ti-chevron-right"></i></button>
+</div>
+
+{#if !plan}
+  <div class="spinner-wrap">Загрузка…</div>
+{:else}
+  <div class="page">
+    <div class="card field">
+      <label for="inc">Ожидаемый доход</label>
+      <input id="inc" class="input num" inputmode="numeric" bind:value={income} />
+      <button class="btn btn-primary" onclick={recalc} disabled={saving}>
+        <i class="ti ti-calculator"></i> Пересчитать 50/30/20
+      </button>
+    </div>
+
+    <div>
+      <div class="section-label">Лимиты по категориям</div>
+      <div class="card stack">
+        {#each ['needs', 'wants', 'savings'] as grp}
+          {@const cats = categories.filter((c) => c.group === grp)}
+          {#if cats.length}
+            <div class="grp">{groupLabel[grp]}</div>
+            {#each cats as c}
+              <div class="limit-row">
+                <span class="limit-name"><i class="ti {c.icon}" style="color:{c.color}"></i> {c.name}</span>
+                <input class="input num limit-input" inputmode="numeric" bind:value={limits[c.id]} />
+              </div>
+            {/each}
+          {/if}
+        {/each}
+        <button class="btn btn-secondary" onclick={saveLimits}>Сохранить лимиты</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Плановые крупные расходы</div>
+      <div class="card stack">
+        {#each plan.planned_expenses as e}
+          <div class="limit-row">
+            <span>{e.description}</span>
+            <span class="num">{money(e.amount)} ₽
+              <button class="del-x" onclick={() => delExpense(e.id)} aria-label="Удалить"><i class="ti ti-x"></i></button>
+            </span>
+          </div>
+        {/each}
+        <div class="add-row">
+          <input class="input" placeholder="Описание" bind:value={newExp.description} />
+          <input class="input num add-amt" inputmode="numeric" placeholder="₽" bind:value={newExp.amount} />
+          <button class="btn-add" onclick={addExpense} aria-label="Добавить"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+    </div>
+
+    {#if debts.length}
+      <div>
+        <div class="section-label">Плановые взносы по долгам</div>
+        <div class="card stack">
+          {#each plan.planned_debt_payments as p}
+            <div class="limit-row">
+              <span>{p.debt_name}</span>
+              <span class="num">{money(p.amount)} ₽
+                <button class="del-x" onclick={() => delDebt(p.id)} aria-label="Удалить"><i class="ti ti-x"></i></button>
+              </span>
+            </div>
+          {/each}
+          <div class="add-row">
+            <select class="input" bind:value={newDebt.debt_id}>
+              <option value={0}>Долг…</option>
+              {#each debts as d}<option value={d.id}>{d.name}</option>{/each}
+            </select>
+            <input class="input num add-amt" inputmode="numeric" placeholder="₽" bind:value={newDebt.amount} />
+            <button class="btn-add" onclick={addDebt} aria-label="Добавить"><i class="ti ti-plus"></i></button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if !plan.is_closed}
+      <button class="btn btn-secondary" onclick={closeMonth}>
+        <i class="ti ti-lock"></i> Закрыть месяц
+      </button>
+    {:else}
+      <p class="muted">Месяц закрыт.</p>
+    {/if}
+  </div>
+{/if}
+
+<style>
+  .grp { font-size: var(--text-sm); color: var(--blue); font-weight: 600; margin-top: var(--space-2); }
+  .limit-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+  .limit-name { font-size: var(--text-sm); display: flex; align-items: center; gap: 6px; }
+  .limit-input { width: 110px; text-align: right; }
+  .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
+  .add-row .input { flex: 1; }
+  .add-amt { flex: 0 0 90px; text-align: right; }
+  .btn-add { background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); width: 44px; height: 44px; flex-shrink: 0; }
+  .del-x { background: none; border: none; color: var(--text-muted); padding: 0 0 0 8px; }
+</style>

@@ -8,6 +8,13 @@
 
 :443 {
 	tls /certs/cert.pem /certs/key.pem
+
+	# Два пользователя, пароль хранится bcrypt-хэшем в .env (APP_PASSWORD_HASH).
+	# Сгенерировать: make hash-password
+	basic_auth {
+		{$APP_USER} {$APP_PASSWORD_HASH}
+	}
+
 	reverse_proxy budget-app:8000
 }
 
