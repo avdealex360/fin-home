@@ -62,3 +62,16 @@ def test_seed_no_savings_categories_no_goals(db):
     assert any(f.group == "savings" for f in funds)
 
     assert db.query(Setting).filter(Setting.key == "deposit_monthly_target").first() is not None
+
+
+from app.services.deposit import DepositService
+from app.models import DepositContribution
+
+
+def test_deposit_contribute_grows_balance(db):
+    ensure_settings(db)
+    start = DepositService.get_balance(db)
+    new_balance = DepositService.contribute(db, Decimal("10000"), source="manual")
+    assert new_balance == start + Decimal("10000")
+    assert DepositService.get_balance(db) == start + Decimal("10000")
+    assert db.query(DepositContribution).count() == 1
