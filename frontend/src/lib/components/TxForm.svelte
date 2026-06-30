@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { api, type Category, type User, type Transaction } from '../api'
+  import { api, type Category, type GroupSummary, type User, type Transaction } from '../api'
+  import { period } from '../stores'
+  import { money } from '../format'
   import MoneyInput from './MoneyInput.svelte'
+  import ProgressBar from './ProgressBar.svelte'
 
   interface Props {
     onsubmitted: (tx: Transaction) => void
@@ -19,6 +22,8 @@
 
   let categories = $state<Category[]>([])
   let users = $state<User[]>([])
+  // Map group name -> GroupSummary for remaining-in-bucket hint
+  let groupMap = $state<Record<string, GroupSummary>>({})
 
   $effect(() => {
     load()
@@ -28,24 +33,60 @@
   async function load() {
     if (loaded) return
     loaded = true
-    const [cats, us] = await Promise.all([api.categories(), api.users()])
+    // Snapshot period values before async call
+    const { year, month } = $period
+    const [cats, us, dash] = await Promise.all([
+      api.categories(),
+      api.users(),
+      api.dashboard(year, month),
+    ])
     categories = cats
     users = us
     if (us.length) userId = us[0].id
+    // Build group map from dashboard groups
+    const m: Record<string, GroupSummary> = {}
+    for (const g of dash.groups) {
+      m[g.name] = g
+    }
+    groupMap = m
   }
 
-  let shownCategories = $derived(
-    categories.filter((c) =>
-      type === 'income' ? c.group === 'income' : c.group !== 'income',
-    ),
+  // Categories for income type
+  let incomeCategories = $derived(categories.filter((c) => c.group === 'income' && !c.is_hidden))
+
+  // Categories grouped for expense/transfer type
+  let needsCategories = $derived(categories.filter((c) => c.group === 'needs' && !c.is_hidden))
+  let wantsCategories = $derived(categories.filter((c) => c.group === 'wants' && !c.is_hidden))
+
+  // All visible non-income categories (for transfer type)
+  let expenseCategories = $derived(
+    categories.filter((c) => c.group !== 'income' && !c.is_hidden),
   )
 
   // Reset selected category when switching type so it stays valid.
+  let shownCategories = $derived(
+    type === 'income' ? incomeCategories : expenseCategories,
+  )
   $effect(() => {
     if (categoryId && !shownCategories.some((c) => c.id === categoryId)) {
       categoryId = null
     }
   })
+
+  // Derive the group of the currently selected category
+  let selectedCategory = $derived(categories.find((c) => c.id === categoryId) ?? null)
+  let selectedGroup = $derived<GroupSummary | null>(
+    selectedCategory && (selectedCategory.group === 'needs' || selectedCategory.group === 'wants')
+      ? (groupMap[selectedCategory.group] ?? null)
+      : null,
+  )
+
+  // Labels for bucket headers
+  const GROUP_LABELS: Record<string, string> = {
+    needs: 'Нужды',
+    wants: 'Желания',
+    savings: 'Накопления',
+  }
 
   async function submit() {
     if (amount <= 0) {
@@ -87,21 +128,62 @@
 
 <MoneyInput bind:value={amount} />
 
-<div class="cats" role="listbox" aria-label="Категория">
-  {#each shownCategories as c (c.id)}
-    <button
-      role="option"
-      aria-selected={categoryId === c.id}
-      class="cat-chip"
-      class:active={categoryId === c.id}
-      style="--c: {c.color}"
-      onclick={() => (categoryId = c.id)}
-    >
-      <i class="ti {c.icon}"></i>
-      <span>{c.name}</span>
-    </button>
+{#if type === 'expense'}
+  <!-- Grouped expense categories: Нужды then Желания -->
+  {#each [['needs', needsCategories], ['wants', wantsCategories]] as [group, cats]}
+    {#if (cats as Category[]).length > 0}
+      <div class="group-section">
+        <span class="group-label">{GROUP_LABELS[group as string]}</span>
+        <div class="cats" role="listbox" aria-label={GROUP_LABELS[group as string]}>
+          {#each (cats as Category[]) as c (c.id)}
+            <button
+              role="option"
+              aria-selected={categoryId === c.id}
+              class="cat-chip"
+              class:active={categoryId === c.id}
+              style="--c: {c.color}"
+              onclick={() => (categoryId = c.id)}
+            >
+              <i class="ti {c.icon}"></i>
+              <span>{c.name}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
   {/each}
-</div>
+
+  <!-- Remaining-in-bucket hint when a needs/wants category is selected -->
+  {#if selectedGroup && categoryId !== null}
+    <div class="bucket-hint">
+      <div class="bucket-hint-text">
+        <span>осталось в {GROUP_LABELS[selectedCategory!.group]}:</span>
+        <span class="bucket-amounts">
+          <strong>{money(selectedGroup.remaining)}</strong>
+          <span class="of-text">из {money(selectedGroup.limit)}</span>
+        </span>
+      </div>
+      <ProgressBar spent={selectedGroup.spent} limit={selectedGroup.limit} />
+    </div>
+  {/if}
+{:else}
+  <!-- Income: flat list of income categories; Transfer: flat list of expense categories -->
+  <div class="cats" role="listbox" aria-label="Категория">
+    {#each (type === 'income' ? incomeCategories : expenseCategories) as c (c.id)}
+      <button
+        role="option"
+        aria-selected={categoryId === c.id}
+        class="cat-chip"
+        class:active={categoryId === c.id}
+        style="--c: {c.color}"
+        onclick={() => (categoryId = c.id)}
+      >
+        <i class="ti {c.icon}"></i>
+        <span>{c.name}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
 
 {#if users.length > 1}
   <div class="who">
@@ -141,6 +223,16 @@
     font-size: var(--text-sm);
   }
   .type-tab.active { background: var(--blue); color: #fff; }
+
+  .group-section { display: flex; flex-direction: column; gap: var(--space-1); }
+  .group-label {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0 2px;
+  }
+
   .cats {
     display: flex;
     gap: var(--space-2);
@@ -166,6 +258,26 @@
   .cat-chip i { font-size: 22px; color: var(--c); }
   .cat-chip span { text-align: center; line-height: 1.1; }
   .cat-chip.active { border-color: var(--c); background: var(--bg-elevated); color: var(--text-primary); }
+
+  .bucket-hint {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-surface);
+    border-radius: var(--radius-sm);
+  }
+  .bucket-hint-text {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+  .bucket-amounts { display: flex; align-items: baseline; gap: var(--space-1); }
+  .bucket-amounts strong { color: var(--text-primary); }
+  .of-text { font-size: var(--text-xs); color: var(--text-secondary); }
+
   .who { display: flex; gap: var(--space-2); }
   .who-btn {
     flex: 1;
