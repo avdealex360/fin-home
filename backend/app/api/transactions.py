@@ -14,7 +14,6 @@ from app.db import get_db
 from app.models import Transaction
 from app.serializers import transaction_dict
 from app.services.allocation import get_unallocated_for_tx
-from app.services.goals import remove_goal_from_transaction, sync_goal_from_transaction
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -60,8 +59,6 @@ def create_transaction(body: TransactionBody, db: Session = Depends(get_db)):
     )
     db.add(tx)
     db.flush()
-    if tx.type in ("expense", "transfer"):
-        sync_goal_from_transaction(db, tx)
     db.commit()
     db.refresh(tx)
     result = transaction_dict(tx)
@@ -75,8 +72,6 @@ def update_transaction(tx_id: int, body: TransactionBody, db: Session = Depends(
     tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
     if not tx:
         raise HTTPException(404, "transaction not found")
-    # Reverse the old goal impact before applying the new values.
-    remove_goal_from_transaction(db, tx)
     tx.type = body.type
     tx.amount = body.amount
     if body.date:
@@ -86,9 +81,6 @@ def update_transaction(tx_id: int, body: TransactionBody, db: Session = Depends(
     tx.comment = body.comment
     tx.base_amount_eur = body.base_amount_eur
     tx.exchange_rate = body.exchange_rate
-    db.flush()
-    if tx.type in ("expense", "transfer"):
-        sync_goal_from_transaction(db, tx)
     db.commit()
     db.refresh(tx)
     return transaction_dict(tx)
@@ -99,7 +91,6 @@ def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
     tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
     if not tx:
         return {"ok": True}
-    remove_goal_from_transaction(db, tx)
     db.delete(tx)
     db.commit()
     return {"ok": True}

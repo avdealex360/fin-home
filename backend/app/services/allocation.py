@@ -7,32 +7,27 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, CategoryLimit, IncomeAllocation, MonthlyPlan, SinkingFund, Transaction
 from app.seed import GROUP_PERCENTS
+from app.services.deposit import DepositService
+
+BUCKETS = [("needs", "Нужды", 50), ("wants", "Желания", 30), ("savings", "Сбережения", 20)]
 
 
 @dataclass
 class AllocationItem:
     id: int
     name: str
-    kind: str  # category | fund
+    kind: str  # category | fund | deposit
     suggested_amount: Decimal
-    group: str | None = None
-    allocation_level: int = 0
+    group: str
 
 
 @dataclass
-class AllocationLevel:
-    level: int
+class AllocationBucket:
+    group: str
     label: str
+    percent: int
+    target_amount: Decimal
     items: list[AllocationItem] = field(default_factory=list)
-    total_suggested: Decimal = Decimal("0")
-
-
-LEVEL_LABELS = {
-    1: "Обязательства (фиксированные)",
-    2: "Переменные нужды",
-    3: "Взносы в копилки",
-    4: "Желания и сбережения",
-}
 
 
 def get_allocated_amount(db: Session, income_tx_id: int) -> Decimal:
@@ -100,100 +95,76 @@ def _limit_for_category(db: Session, plan: MonthlyPlan | None, cat: Category) ->
     return Decimal("0")
 
 
-def get_allocation_levels(
+def get_allocation_buckets(
     db: Session, year: int, month: int, income_amount: Decimal
-) -> list[AllocationLevel]:
+) -> list[AllocationBucket]:
     plan = (
         db.query(MonthlyPlan)
         .options(joinedload(MonthlyPlan.limits))
         .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
         .first()
     )
+    out: list[AllocationBucket] = []
+    for group, label, percent in BUCKETS:
+        target = (income_amount * Decimal(percent) / Decimal("100")).quantize(Decimal("0.01"))
+        bucket = AllocationBucket(group=group, label=label, percent=percent, target_amount=target)
 
-    levels: dict[int, AllocationLevel] = {}
-    for lvl, label in LEVEL_LABELS.items():
-        levels[lvl] = AllocationLevel(level=lvl, label=label)
-
-    categories = (
-        db.query(Category)
-        .filter(
-            Category.is_hidden.is_(False),
-            Category.group.in_(["needs", "wants", "savings"]),
-            Category.allocation_level.in_([1, 2, 4]),
-        )
-        .order_by(Category.sort_order)
-        .all()
-    )
-
-    l1_total = Decimal("0")
-    l2_total = Decimal("0")
-
-    for cat in categories:
-        level = cat.allocation_level or 4
-        if level == 3:
-            continue
-        amount = _limit_for_category(db, plan, cat)
-        if level == 1:
-            l1_total += amount
-        elif level == 2:
-            l2_total += amount
-        levels[level].items.append(
-            AllocationItem(
-                id=cat.id,
-                name=cat.name,
-                kind="category",
-                suggested_amount=amount,
-                group=cat.group,
-                allocation_level=level,
+        if group in ("needs", "wants"):
+            cats = (
+                db.query(Category)
+                .filter(Category.is_hidden.is_(False), Category.group == group)
+                .order_by(Category.sort_order)
+                .all()
             )
-        )
-        levels[level].total_suggested += amount
+            for cat in cats:
+                bucket.items.append(
+                    AllocationItem(
+                        id=cat.id,
+                        name=cat.name,
+                        kind="category",
+                        suggested_amount=_limit_for_category(db, plan, cat),
+                        group=group,
+                    )
+                )
 
-    funds = (
-        db.query(SinkingFund)
-        .filter(SinkingFund.is_active.is_(True))
-        .order_by(SinkingFund.id)
-        .all()
-    )
-    for fund in funds:
-        levels[3].items.append(
-            AllocationItem(
-                id=fund.id,
-                name=fund.name,
-                kind="fund",
-                suggested_amount=fund.monthly_contribution,
-                group=fund.category_group,
-                allocation_level=3,
+        funds = (
+            db.query(SinkingFund)
+            .filter(SinkingFund.is_active.is_(True), SinkingFund.group == group)
+            .order_by(SinkingFund.id)
+            .all()
+        )
+        for f in funds:
+            bucket.items.append(
+                AllocationItem(
+                    id=f.id,
+                    name=f.name,
+                    kind="fund",
+                    suggested_amount=f.monthly_contribution,
+                    group=group,
+                )
             )
-        )
-        levels[3].total_suggested += fund.monthly_contribution
 
-    # L4: apply 50/30/20 to remainder after L1-L3
-    remainder = income_amount - l1_total - l2_total - levels[3].total_suggested
-    if remainder > 0 and levels[4].items:
-        wants_cats = [i for i in levels[4].items if i.group == "wants"]
-        savings_cats = [i for i in levels[4].items if i.group == "savings"]
-        wants_total = remainder * Decimal("60") / Decimal("100")  # 30/50 of remainder ~ wants share
-        savings_total = remainder - wants_total
-        if wants_cats:
-            per_want = wants_total / len(wants_cats)
-            for item in wants_cats:
-                item.suggested_amount = per_want.quantize(Decimal("0.01"))
-        if savings_cats:
-            per_save = savings_total / len(savings_cats)
-            for item in savings_cats:
-                item.suggested_amount = per_save.quantize(Decimal("0.01"))
-        levels[4].total_suggested = sum(i.suggested_amount for i in levels[4].items)
-
-    return [levels[i] for i in sorted(levels.keys())]
+        if group == "savings":
+            bucket.items.append(
+                AllocationItem(
+                    id=0,
+                    name="Вклад",
+                    kind="deposit",
+                    suggested_amount=DepositService.get_monthly_target(db),
+                    group="savings",
+                )
+            )
+        out.append(bucket)
+    return out
 
 
 @dataclass
 class AllocationInput:
     category_id: int | None = None
     fund_id: int | None = None
+    to_deposit: bool = False
     amount: Decimal = Decimal("0")
-    allocation_level: int = 1
+    group: str = "needs"
 
 
 def allocate_income(
@@ -205,38 +176,40 @@ def allocate_income(
     if not tx or tx.type != "income":
         raise ValueError("Invalid income transaction")
 
-    old_allocs = db.query(IncomeAllocation).filter(IncomeAllocation.income_tx_id == income_tx_id).all()
-    for old in old_allocs:
-        if old.fund_id:
-            fund = db.query(SinkingFund).filter(SinkingFund.id == old.fund_id).first()
-            if fund:
-                fund.current_amount -= old.amount
-                if fund.current_amount < 0:
-                    fund.current_amount = Decimal("0")
-
+    old = db.query(IncomeAllocation).filter(IncomeAllocation.income_tx_id == income_tx_id).all()
+    for o in old:
+        if o.fund_id:
+            f = db.query(SinkingFund).filter(SinkingFund.id == o.fund_id).first()
+            if f:
+                f.current_amount = max(Decimal("0"), f.current_amount - o.amount)
+    # reverse any prior deposit contributions made from this income (handles re-allocation)
+    DepositService.rollback_for_income(db, income_tx_id)
     db.query(IncomeAllocation).filter(IncomeAllocation.income_tx_id == income_tx_id).delete()
 
     total = Decimal("0")
-    for alloc in allocations:
-        if alloc.amount <= 0:
+    for a in allocations:
+        if a.amount <= 0:
             continue
         db.add(
             IncomeAllocation(
                 income_tx_id=income_tx_id,
-                category_id=alloc.category_id,
-                fund_id=alloc.fund_id,
-                amount=alloc.amount,
+                category_id=a.category_id,
+                fund_id=a.fund_id,
+                to_deposit=a.to_deposit,
+                amount=a.amount,
                 allocated_at=datetime.utcnow(),
-                allocation_level=alloc.allocation_level,
+                allocation_level=0,
             )
         )
-        total += alloc.amount
-        if alloc.fund_id:
-            fund = db.query(SinkingFund).filter(SinkingFund.id == alloc.fund_id).first()
-            if fund:
-                fund.current_amount += alloc.amount
+        total += a.amount
+        if a.fund_id:
+            f = db.query(SinkingFund).filter(SinkingFund.id == a.fund_id).first()
+            if f:
+                f.current_amount += a.amount
+        if a.to_deposit:
+            DepositService.contribute(db, a.amount, source="allocation", income_tx_id=income_tx_id)
 
-    tx.is_fully_allocated = total == tx.amount or abs(total - tx.amount) <= Decimal("0.01")
+    tx.is_fully_allocated = abs(total - tx.amount) <= Decimal("0.01")
     db.commit()
     db.refresh(tx)
     return tx

@@ -57,6 +57,10 @@
   }
 
   const tierClass = (t: string) => (t === 'urgent' ? 'red' : t === 'attention' ? 'yellow' : 'blue')
+
+  const nominalPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
+  const groupLabel = (key: string, label: string) =>
+    nominalPct[key] !== undefined ? `${label} ${nominalPct[key]}%` : label
 </script>
 
 {#if !summary}
@@ -97,8 +101,13 @@
       {#each summary.groups as g}
         <div>
           <div class="row">
-            <span>{g.label}</span>
-            <span class="muted num">{money(g.spent)} / {money(g.limit)}</span>
+            <span>{groupLabel(g.name, g.label)}</span>
+            <span class="muted num">
+              {#if g.name === 'savings'}
+                <span class="aside-label">отложено</span>
+              {/if}
+              {money(g.spent)} / {money(g.limit)}
+            </span>
           </div>
           <ProgressBar spent={g.spent} limit={g.limit} color={g.color} showPace={true} />
         </div>
@@ -187,4 +196,5 @@
   .tx-amt { grid-row: 1 / 3; grid-column: 2; align-self: center; }
   .tx-amt.income { color: var(--green); }
   .tx-del { background: var(--red-bg); color: var(--red); border: none; border-radius: var(--radius-md); width: 56px; }
+  .aside-label { font-size: var(--text-xs); opacity: 0.7; margin-right: var(--space-1); }
 </style>

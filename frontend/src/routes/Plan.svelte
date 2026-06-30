@@ -2,6 +2,7 @@
   import { api, type Category, type DebtSummary } from '../lib/api'
   import { period, dataVersion, invalidate, showToast } from '../lib/stores'
   import { money, monthName, shiftMonth } from '../lib/format'
+  import ProgressBar from '../lib/components/ProgressBar.svelte'
 
   let plan = $state<any>(null)
   let categories = $state<Category[]>([])
@@ -9,6 +10,7 @@
   let income = $state(0)
   let limits = $state<Record<number, number>>({})
   let saving = $state(false)
+  let meter = $state<Record<string, { allocated: number; target: number }>>({})
 
   let newExp = $state({ description: '', amount: 0 })
   let newDebt = $state({ debt_id: 0, amount: 0 })
@@ -20,17 +22,27 @@
   })
 
   async function load(year: number, month: number) {
-    const [p, cats, ds] = await Promise.all([api.plan(year, month), api.categories(), api.debts()])
+    const [p, cats, ds, m] = await Promise.all([
+      api.plan(year, month),
+      api.categories(),
+      api.debts(),
+      api.planMeter(year, month),
+    ])
     plan = p
     categories = cats.filter((c) => c.group !== 'income')
     debts = ds
     income = p.expected_income
-    const m: Record<number, number> = {}
+    meter = m
+    const lm: Record<number, number> = {}
     for (const c of categories) {
       const l = p.limits?.find((x: any) => x.category_id === c.id)
-      m[c.id] = l ? l.limit_amount + (l.carried_over || 0) : 0
+      lm[c.id] = l ? l.limit_amount + (l.carried_over || 0) : 0
     }
-    limits = m
+    limits = lm
+  }
+
+  async function loadMeter() {
+    meter = await api.planMeter($period.year, $period.month)
   }
 
   function changeMonth(delta: number) {
@@ -43,6 +55,7 @@
     await api.savePlan({ expected_income: income, auto_distribute: true }, $period.year, $period.month)
     saving = false
     invalidate()
+    await loadMeter()
     showToast('План пересчитан по 50/30/20')
   }
 
@@ -81,6 +94,26 @@
   }
 
   const groupLabel: Record<string, string> = { needs: 'Нужды', wants: 'Желания', savings: 'Сбережения' }
+  const groupPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
+
+  // Live-derived allocated sums for needs/wants (editable on this screen)
+  let needsAllocated = $derived(
+    categories.filter((c) => c.group === 'needs').reduce((s, c) => s + (limits[c.id] ?? 0), 0),
+  )
+  let wantsAllocated = $derived(
+    categories.filter((c) => c.group === 'wants').reduce((s, c) => s + (limits[c.id] ?? 0), 0),
+  )
+  // savings allocated comes from meter (includes funds + deposit target)
+  let savingsAllocated = $derived(meter['savings']?.allocated ?? 0)
+
+  function meterAllocated(grp: string): number {
+    if (grp === 'needs') return needsAllocated
+    if (grp === 'wants') return wantsAllocated
+    return savingsAllocated
+  }
+  function meterTarget(grp: string): number {
+    return income * (groupPct[grp] ?? 0) / 100
+  }
 </script>
 
 <div class="page-header">
@@ -97,8 +130,22 @@
       <label for="inc">Ожидаемый доход</label>
       <input id="inc" class="input num" inputmode="numeric" bind:value={income} />
       <button class="btn btn-primary" onclick={recalc} disabled={saving}>
-        <i class="ti ti-calculator"></i> Пересчитать 50/30/20
+        <i class="ti ti-calculator"></i> Подогнать под 50/30/20
       </button>
+    </div>
+
+    <div class="card stack meter-card">
+      {#each ['needs', 'wants', 'savings'] as grp}
+        {@const allocated = meterAllocated(grp)}
+        {@const target = meterTarget(grp)}
+        <div class="meter-row">
+          <div class="meter-labels">
+            <span class="meter-name">{groupLabel[grp]}</span>
+            <span class="meter-nums"><span class="num">{money(allocated)}</span> / <span class="num">{money(target)}</span> ₽</span>
+          </div>
+          <ProgressBar spent={allocated} limit={target} />
+        </div>
+      {/each}
     </div>
 
     <div>
@@ -183,4 +230,10 @@
   .add-amt { flex: 0 0 90px; text-align: right; }
   .btn-add { background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); width: 44px; height: 44px; flex-shrink: 0; }
   .del-x { background: none; border: none; color: var(--text-muted); padding: 0 0 0 8px; }
+
+  .meter-card { gap: var(--space-3); }
+  .meter-row { display: flex; flex-direction: column; gap: var(--space-1); }
+  .meter-labels { display: flex; justify-content: space-between; align-items: baseline; }
+  .meter-name { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
+  .meter-nums { font-size: var(--text-xs); color: var(--text-muted); }
 </style>

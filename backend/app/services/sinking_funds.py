@@ -17,7 +17,7 @@ class FundSummary:
     target_date: date | None
     progress_percent: float
     is_rolling: bool
-    linked_category_id: int | None
+    group: str
 
 
 class SinkingFundService:
@@ -50,7 +50,7 @@ class SinkingFundService:
                     target_date=fund.target_date,
                     progress_percent=min(progress, 100.0),
                     is_rolling=fund.is_rolling,
-                    linked_category_id=fund.linked_category_id,
+                    group=fund.group,
                 )
             )
         return result
@@ -100,7 +100,7 @@ class SinkingFundService:
             type="expense",
             amount=amount,
             date=spend_date,
-            category_id=category_id or fund.linked_category_id,
+            category_id=category_id,
             user_id=user_id,
             comment=comment,
             is_sinking_fund_spend=True,
@@ -123,10 +123,9 @@ class SinkingFundService:
         name: str,
         target_amount: Decimal,
         monthly_contribution: Decimal,
-        category_group: str = "needs",
+        group: str = "savings",
         target_date: date | None = None,
         is_rolling: bool = False,
-        linked_category_id: int | None = None,
     ) -> SinkingFund:
         fund = SinkingFund(
             name=name,
@@ -134,9 +133,8 @@ class SinkingFundService:
             current_amount=Decimal("0"),
             monthly_contribution=monthly_contribution,
             target_date=target_date,
-            category_group=category_group,
+            group=group,
             is_rolling=is_rolling,
-            linked_category_id=linked_category_id,
         )
         db.add(fund)
         db.commit()
@@ -152,6 +150,7 @@ class SinkingFundService:
         monthly_contribution: Decimal,
         target_date: date | None = None,
         is_rolling: bool = False,
+        group: str | None = None,
     ) -> SinkingFund:
         fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
         if not fund:
@@ -161,6 +160,8 @@ class SinkingFundService:
         fund.monthly_contribution = monthly_contribution
         fund.target_date = target_date
         fund.is_rolling = is_rolling
+        if group is not None:
+            fund.group = group
         db.commit()
         db.refresh(fund)
         return fund

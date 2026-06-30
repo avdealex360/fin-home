@@ -1,15 +1,11 @@
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Category, CategoryLimit, MonthlyPlan
 from app.seed import GROUP_PERCENTS
-from app.services.deposit_calc import (
-    build_forecast,
-    parse_rate_schedule,
-    required_monthly_contribution,
-)
 from app.services.settings_store import get_setting, set_setting
 
 
@@ -132,121 +128,63 @@ class PlanService:
             db.delete(item)
             db.commit()
 
-
-class DepositService:
     @staticmethod
-    def get_settings(db: Session) -> dict:
-        balance = Decimal(get_setting(db, "deposit_balance", "0"))
-        rate = Decimal(get_setting(db, "deposit_rate", "17.5"))
-        cap_day = int(get_setting(db, "deposit_cap_day", "18") or "18")
-        start = get_setting(db, "deposit_start_date", "")
-        schedule_raw = get_setting(db, "deposit_rate_schedule", "")
-        return {
-            "balance": balance,
-            "rate": rate,
-            "cap_day": cap_day,
-            "start_date": date.fromisoformat(start) if start else None,
-            "rate_schedule": parse_rate_schedule(schedule_raw, rate),
-        }
+    def meter_503020(db: Session, year: int, month: int) -> dict:
+        from app.models import Category, CategoryLimit
+        from app.services.deposit import DepositService
 
-    @staticmethod
-    def get_current(db: Session) -> tuple[Decimal, Decimal]:
-        s = DepositService.get_settings(db)
-        return s["balance"], s["rate"]
-
-    @staticmethod
-    def update(db: Session, balance: Decimal, rate: Decimal) -> None:
-        set_setting(db, "deposit_balance", str(balance))
-        set_setting(db, "deposit_rate", str(rate))
-
-    @staticmethod
-    def forecast(
-        balance: Decimal,
-        rate: Decimal,
-        monthly_contribution: Decimal,
-        target_date: date,
-        start_date: date | None = None,
-        rate_schedule: list | None = None,
-        capitalization_day: int | None = None,
-        initial_lump_sum: Decimal = Decimal("0"),
-    ) -> list[tuple[date, Decimal]]:
-        start = start_date or date.today()
-        rows = build_forecast(
-            start,
-            balance,
-            rate,
-            target_date,
-            monthly_contribution,
-            initial_lump_sum=initial_lump_sum,
-            rate_schedule=rate_schedule,
-            capitalization_day=capitalization_day,
-        )
-        return [(r.date, r.balance_after) for r in rows]
-
-    @staticmethod
-    def forecast_detailed(
-        db: Session,
-        monthly_contribution: Decimal,
-        target_date: date,
-    ) -> list:
-        s = DepositService.get_settings(db)
-        start = s["start_date"] or date.today()
-        initial_lump = Decimal(get_setting(db, "deposit_initial_lump", "0") or "0")
-        # Таблица как в Excel: от даты открытия, стартовый остаток 0, разовый взнос в 1-й месяц
-        return build_forecast(
-            start,
-            Decimal("0"),
-            s["rate"],
-            target_date,
-            monthly_contribution,
-            initial_lump_sum=initial_lump,
-            rate_schedule=s["rate_schedule"],
-            capitalization_day=s["cap_day"],
-        )
-
-    @staticmethod
-    def forecast_forward(
-        db: Session,
-        monthly_contribution: Decimal,
-        target_date: date,
-    ) -> list:
-        """Прогноз вперёд от текущего баланса (следующая дата капитализации)."""
-        s = DepositService.get_settings(db)
-        start = date.today()
-        if s["cap_day"]:
-            from app.services.deposit_calc import align_capitalization_day, add_months
-
-            cap = align_capitalization_day(start, s["cap_day"])
-            if cap <= start:
-                start = add_months(cap, 1)
+        plan = PlanService.get_or_create_plan(db, year, month)
+        income = plan.expected_income or Decimal("0")
+        out = {}
+        for group, pct in (("needs", 50), ("wants", 30), ("savings", 20)):
+            target = income * Decimal(pct) / Decimal("100")
+            if group in ("needs", "wants"):
+                allocated = (
+                    db.query(func.coalesce(func.sum(CategoryLimit.limit_amount), 0))
+                    .join(Category, Category.id == CategoryLimit.category_id)
+                    .filter(CategoryLimit.plan_id == plan.id, Category.group == group)
+                    .scalar()
+                ) or Decimal("0")
             else:
-                start = cap
-        return build_forecast(
-            start,
-            s["balance"],
-            s["rate"],
-            target_date,
-            monthly_contribution,
-            rate_schedule=s["rate_schedule"],
-            capitalization_day=s["cap_day"],
-        )
+                from app.models import SinkingFund
+
+                fund_sum = (
+                    db.query(func.coalesce(func.sum(SinkingFund.monthly_contribution), 0))
+                    .filter(SinkingFund.is_active.is_(True), SinkingFund.group == "savings")
+                    .scalar()
+                ) or Decimal("0")
+                allocated = Decimal(fund_sum) + DepositService.get_monthly_target(db)
+            out[group] = {"allocated": float(allocated), "target": float(target)}
+        return out
 
     @staticmethod
-    def required_monthly(
-        balance: Decimal,
-        rate: Decimal,
-        target: Decimal,
-        target_date: date,
-        start_date: date | None = None,
-        rate_schedule: list | None = None,
-        capitalization_day: int | None = None,
-    ) -> Decimal:
-        return required_monthly_contribution(
-            balance,
-            rate,
-            target,
-            target_date,
-            start_date=start_date,
-            rate_schedule=rate_schedule,
-            capitalization_day=capitalization_day,
-        )
+    def fit_503020(db: Session, year: int, month: int) -> MonthlyPlan:
+        from app.models import Category, CategoryLimit
+
+        plan = PlanService.get_or_create_plan(db, year, month)
+        income = plan.expected_income or Decimal("0")
+        for group, pct in (("needs", 50), ("wants", 30)):
+            target = income * Decimal(pct) / Decimal("100")
+            cats = db.query(Category).filter(Category.is_hidden.is_(False), Category.group == group).all()
+            limits = {lim.category_id: lim for lim in plan.limits if lim.category_id in {c.id for c in cats}}
+            current_total = sum((lim.limit_amount for lim in limits.values()), Decimal("0"))
+            if current_total > 0:
+                # proportionally scale existing limits
+                factor = target / current_total
+                for lim in limits.values():
+                    lim.limit_amount = (lim.limit_amount * factor).quantize(Decimal("0.01"))
+            elif cats:
+                # fallback: equal split across non-hidden categories in the group
+                per = (target / len(cats)).quantize(Decimal("0.01"))
+                for c in cats:
+                    existing = limits.get(c.id)
+                    if existing:
+                        existing.limit_amount = per
+                    else:
+                        db.add(CategoryLimit(plan_id=plan.id, category_id=c.id, limit_amount=per))
+        db.commit()
+        db.refresh(plan)
+        return plan
+
+
+from app.services.deposit import DepositService  # noqa: E402,F401  (moved; kept for back-compat imports)

@@ -1,34 +1,33 @@
 <script lang="ts">
-  import { api, type GoalSummary, type FundSummary, type DebtSummary } from '../lib/api'
+  import { api, type FundSummary, type DebtSummary } from '../lib/api'
   import { dataVersion, invalidate, showToast } from '../lib/stores'
   import { money } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
 
-  let goals = $state<GoalSummary[]>([])
   let funds = $state<FundSummary[]>([])
   let debts = $state<DebtSummary[]>([])
   let settings = $state<Record<string, string>>({})
 
   // Which item has its action panel open: `${kind}:${id}` and the mode.
   let openPanel = $state<string | null>(null)
-  let panelMode = $state<'contribute' | 'edit'>('contribute')
+  let panelMode = $state<'contribute' | 'spend' | 'edit'>('contribute')
   let amount = $state(0)
   let edit = $state<any>({})
 
-  let adding = $state<'goal' | 'fund' | 'debt' | null>(null)
-  let nf = $state({ name: '', target_amount: 0, monthly_contribution: 0 })
+  let adding = $state<'fund' | 'debt' | null>(null)
+  let nf = $state({ name: '', target_amount: 0, monthly_contribution: 0, group: 'wants' as 'wants' | 'savings', target_date: '', is_rolling: false })
 
   $effect(() => {
     void $dataVersion
     reload()
   })
   async function reload() {
-    ;[goals, funds, debts, settings] = await Promise.all([
-      api.goals(), api.funds(), api.debts(), api.settings(),
+    ;[funds, debts, settings] = await Promise.all([
+      api.funds(), api.debts(), api.settings(),
     ])
   }
 
-  function toggle(kind: string, id: number, mode: 'contribute' | 'edit', item?: any) {
+  function toggle(kind: string, id: number, mode: 'contribute' | 'spend' | 'edit', item?: any) {
     const key = `${kind}:${id}`
     if (openPanel === key && panelMode === mode) {
       openPanel = null
@@ -42,20 +41,17 @@
   const isOpen = (kind: string, id: number, mode: string) =>
     openPanel === `${kind}:${id}` && panelMode === mode
 
-  async function contributeGoal(id: number) {
-    await api.goalContribute(id, { amount }); done('Пополнено')
-  }
   async function contributeFund(id: number) {
     await api.fundContribute(id, { amount }); done('Пополнено')
+  }
+  async function spendFund(id: number) {
+    await api.fundSpend(id, { amount }); done('Потрачено')
   }
   async function payDebt(id: number) {
     await api.debtPayment(id, { amount }); done('Платёж записан')
   }
-  async function saveGoalEdit(id: number) {
-    await api.updateGoal(id, { name: edit.name, target_amount: edit.target_amount, monthly_contribution: edit.monthly_contribution, deadline: edit.deadline || null }); done('Сохранено')
-  }
   async function saveFundEdit(id: number) {
-    await api.updateFund(id, { name: edit.name, target_amount: edit.target_amount, monthly_contribution: edit.monthly_contribution, is_rolling: edit.is_rolling }); done('Сохранено')
+    await api.updateFund(id, { name: edit.name, target_amount: edit.target_amount, monthly_contribution: edit.monthly_contribution, target_date: edit.target_date || null, is_rolling: edit.is_rolling, group: edit.group }); done('Сохранено')
   }
   async function saveDebtEdit(id: number) {
     await api.updateDebt(id, { name: edit.name, total_amount: edit.total_amount, remaining: edit.remaining, interest_rate: edit.interest_rate, monthly_payment: edit.monthly_payment, type: edit.type }); done('Сохранено')
@@ -68,16 +64,14 @@
 
   async function createItem() {
     if (!nf.name) return
-    if (adding === 'goal') await api.createGoal({ name: nf.name, target_amount: nf.target_amount, monthly_contribution: nf.monthly_contribution })
-    if (adding === 'fund') await api.createFund({ name: nf.name, target_amount: nf.target_amount, monthly_contribution: nf.monthly_contribution })
+    if (adding === 'fund') await api.createFund({ name: nf.name, target_amount: nf.target_amount, monthly_contribution: nf.monthly_contribution, group: nf.group, target_date: nf.target_date || null, is_rolling: nf.is_rolling })
     if (adding === 'debt') await api.createDebt({ name: nf.name, total_amount: nf.target_amount, type: 'loan' })
-    nf = { name: '', target_amount: 0, monthly_contribution: 0 }
+    nf = { name: '', target_amount: 0, monthly_contribution: 0, group: 'wants', target_date: '', is_rolling: false }
     adding = null
     invalidate()
     showToast('Создано')
   }
 
-  async function delGoal(g: GoalSummary) { if (confirm(`Удалить цель «${g.name}»?`)) { await api.deleteGoal(g.id); invalidate() } }
   async function delFund(f: FundSummary) { if (confirm(`Удалить копилку «${f.name}»?`)) { await api.deleteFund(f.id); invalidate() } }
   async function delDebt(d: DebtSummary) { if (confirm(`Удалить долг «${d.name}»?`)) { await api.deleteDebt(d.id); invalidate() } }
 
@@ -85,46 +79,14 @@
     await api.saveSettings({ user1_name: settings.user1_name, user2_name: settings.user2_name, eur_rub_rate: settings.eur_rub_rate })
     showToast('Сохранено')
   }
+
+  const groupLabel = (g: 'wants' | 'savings') => g === 'wants' ? 'Желания' : 'Сбережения'
 </script>
 
 <div class="page-header"><h1>Ещё</h1></div>
 
 <div class="page">
-  <!-- Goals -->
-  <section>
-    <div class="row section-label"><span>Цели</span>
-      <button class="btn-ghost btn-sm" onclick={() => (adding = adding === 'goal' ? null : 'goal')} aria-label="Добавить цель"><i class="ti ti-plus"></i></button>
-    </div>
-    <div class="stack">
-      {#each goals as g}
-        <div class="card">
-          <div class="row"><strong>{g.name}</strong><span class="num">{money(g.current_amount)} / {money(g.target_amount)}</span></div>
-          <ProgressBar spent={g.current_amount} limit={g.target_amount} color="green" />
-          {#if g.months_to_goal}<div class="muted small">≈ {g.months_to_goal} мес. до цели</div>{/if}
-          <div class="actions">
-            <button class="btn-ghost btn-sm" onclick={() => toggle('goal', g.id, 'contribute')}>Пополнить</button>
-            <button class="btn-ghost btn-sm" onclick={() => toggle('goal', g.id, 'edit', g)}>Изменить</button>
-            <button class="btn-ghost btn-sm danger" onclick={() => delGoal(g)}>Удалить</button>
-          </div>
-          {#if isOpen('goal', g.id, 'contribute')}
-            <div class="panel">
-              <input class="input num" inputmode="numeric" placeholder="Сумма" bind:value={amount} />
-              <button class="btn btn-primary" onclick={() => contributeGoal(g.id)}>Пополнить</button>
-            </div>
-          {/if}
-          {#if isOpen('goal', g.id, 'edit')}
-            <div class="panel">
-              <input class="input" bind:value={edit.name} />
-              <input class="input num" inputmode="numeric" placeholder="Цель" bind:value={edit.target_amount} />
-              <input class="input num" inputmode="numeric" placeholder="Взнос/мес" bind:value={edit.monthly_contribution} />
-              <input class="input" type="date" bind:value={edit.deadline} />
-              <button class="btn btn-primary" onclick={() => saveGoalEdit(g.id)}>Сохранить</button>
-            </div>
-          {/if}
-        </div>
-      {/each}
-    </div>
-  </section>
+  <a class="btn btn-ghost faq-btn" href="#/faq"><i class="ti ti-help"></i> Как это работает</a>
 
   <!-- Funds -->
   <section>
@@ -134,10 +96,19 @@
     <div class="stack">
       {#each funds as f}
         <div class="card">
-          <div class="row"><strong>{f.name}</strong><span class="num">{money(f.current_amount)} / {money(f.target_amount)}</span></div>
+          <div class="row">
+            <strong>{f.name}</strong>
+            <span class="num">{money(f.current_amount)} / {money(f.target_amount)}</span>
+          </div>
+          <div class="meta-row">
+            <span class="badge">{groupLabel(f.group)}</span>
+            {#if f.target_date}<span class="muted small">до {f.target_date}</span>{/if}
+            {#if f.is_rolling}<span class="muted small">· возобн.</span>{/if}
+          </div>
           <ProgressBar spent={f.current_amount} limit={f.target_amount} color="green" />
           <div class="actions">
             <button class="btn-ghost btn-sm" onclick={() => toggle('fund', f.id, 'contribute')}>Пополнить</button>
+            <button class="btn-ghost btn-sm" onclick={() => toggle('fund', f.id, 'spend')}>Потратить</button>
             <button class="btn-ghost btn-sm" onclick={() => toggle('fund', f.id, 'edit', f)}>Изменить</button>
             <button class="btn-ghost btn-sm danger" onclick={() => delFund(f)}>Удалить</button>
           </div>
@@ -147,11 +118,22 @@
               <button class="btn btn-primary" onclick={() => contributeFund(f.id)}>Пополнить</button>
             </div>
           {/if}
+          {#if isOpen('fund', f.id, 'spend')}
+            <div class="panel">
+              <input class="input num" inputmode="numeric" placeholder="Сумма" bind:value={amount} />
+              <button class="btn btn-primary" onclick={() => spendFund(f.id)}>Потратить</button>
+            </div>
+          {/if}
           {#if isOpen('fund', f.id, 'edit')}
             <div class="panel">
               <input class="input" bind:value={edit.name} />
-              <input class="input num" inputmode="numeric" placeholder="Цель" bind:value={edit.target_amount} />
+              <select class="input" bind:value={edit.group}>
+                <option value="wants">Желания</option>
+                <option value="savings">Сбережения</option>
+              </select>
+              <input class="input num" inputmode="numeric" placeholder="Цель (сумма)" bind:value={edit.target_amount} />
               <input class="input num" inputmode="numeric" placeholder="Взнос/мес" bind:value={edit.monthly_contribution} />
+              <input class="input" type="date" placeholder="Дата цели" bind:value={edit.target_date} />
               <label class="check"><input type="checkbox" bind:checked={edit.is_rolling} /> Возобновляемая</label>
               <button class="btn btn-primary" onclick={() => saveFundEdit(f.id)}>Сохранить</button>
             </div>
@@ -199,11 +181,19 @@
 
   {#if adding}
     <div class="card stack">
-      <div class="section-label">Новое: {adding === 'goal' ? 'цель' : adding === 'fund' ? 'копилка' : 'долг'}</div>
+      <div class="section-label">Новое: {adding === 'fund' ? 'копилка' : 'долг'}</div>
       <input class="input" placeholder="Название" bind:value={nf.name} />
+      {#if adding === 'fund'}
+        <select class="input" bind:value={nf.group}>
+          <option value="wants">Желания</option>
+          <option value="savings">Сбережения</option>
+        </select>
+      {/if}
       <input class="input num" inputmode="numeric" placeholder={adding === 'debt' ? 'Сумма долга' : 'Целевая сумма'} bind:value={nf.target_amount} />
-      {#if adding !== 'debt'}
+      {#if adding === 'fund'}
         <input class="input num" inputmode="numeric" placeholder="Взнос/мес" bind:value={nf.monthly_contribution} />
+        <input class="input" type="date" placeholder="Дата цели" bind:value={nf.target_date} />
+        <label class="check"><input type="checkbox" bind:checked={nf.is_rolling} /> Возобновляемая</label>
       {/if}
       <button class="btn btn-primary" onclick={createItem}>Создать</button>
     </div>
@@ -224,6 +214,7 @@
 </div>
 
 <style>
+  .faq-btn { display: flex; align-items: center; gap: var(--space-2); justify-content: center; border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 12px; }
   section { display: flex; flex-direction: column; gap: var(--space-2); }
   .actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
   .danger { color: var(--red); }
@@ -231,4 +222,6 @@
   .small { font-size: var(--text-xs); margin-top: 4px; }
   .panel { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid rgba(255,255,255,0.06); }
   .check { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-secondary); }
+  .meta-row { display: flex; align-items: center; gap: var(--space-2); margin-top: 2px; margin-bottom: 2px; }
+  .badge { font-size: var(--text-xs); padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--text-secondary); }
 </style>

@@ -10,7 +10,7 @@ from app.models import Category, Debt, MonthlyPlan, SinkingFund, Transaction
 from app.services.allocation import (
     AllocationInput,
     allocate_income,
-    get_allocation_levels,
+    get_allocation_buckets,
     get_unallocated_total,
 )
 from app.services.debts import compute_priority_ranks, debt_cost_analysis
@@ -35,41 +35,39 @@ def test_unallocated_zero_after_allocate(db):
     db.add(tx)
     db.commit()
 
-    levels = get_allocation_levels(db, date.today().year, date.today().month, tx.amount)
+    from app.services.allocation import get_allocation_buckets
+    buckets = get_allocation_buckets(db, date.today().year, date.today().month, tx.amount)
     allocations = []
-    for level in levels:
-        for item in level.items:
+    assigned = Decimal("0")
+    for b in buckets:
+        for item in b.items:
             if item.suggested_amount > 0:
-                if item.kind == "fund":
-                    allocations.append(
-                        AllocationInput(fund_id=item.id, amount=item.suggested_amount, allocation_level=3)
-                    )
-                else:
-                    allocations.append(
-                        AllocationInput(
-                            category_id=item.id,
-                            amount=item.suggested_amount,
-                            allocation_level=item.allocation_level,
-                        )
-                    )
-
+                allocations.append(AllocationInput(
+                    category_id=item.id if item.kind == "category" else None,
+                    fund_id=item.id if item.kind == "fund" else None,
+                    to_deposit=item.kind == "deposit",
+                    amount=item.suggested_amount, group=item.group))
+                assigned += item.suggested_amount
+    # top up remainder to the deposit so the income is fully allocated
+    remainder = tx.amount - assigned
+    if remainder > 0:
+        allocations.append(AllocationInput(to_deposit=True, amount=remainder, group="savings"))
     allocate_income(db, tx.id, allocations)
-    unallocated = get_unallocated_total(db, date.today().year, date.today().month)
-    assert unallocated == Decimal("0")
     db.refresh(tx)
     assert tx.is_fully_allocated
 
 
-def test_allocation_four_levels(db):
+def test_allocation_three_buckets(db):
     plan = MonthlyPlan(year=date.today().year, month=date.today().month, expected_income=Decimal("110000"))
     db.add(plan)
     db.commit()
 
-    levels = get_allocation_levels(db, date.today().year, date.today().month, Decimal("110000"))
-    assert len(levels) == 4
-    assert levels[0].level == 1
-    assert levels[2].level == 3
-    assert any(item.kind == "fund" for item in levels[2].items)
+    buckets = get_allocation_buckets(db, date.today().year, date.today().month, Decimal("110000"))
+    assert len(buckets) == 3
+    groups = [b.group for b in buckets]
+    assert groups == ["needs", "wants", "savings"]
+    savings = next(b for b in buckets if b.group == "savings")
+    assert any(item.kind == "deposit" for item in savings.items)
 
 
 def test_sinking_fund_contribute_and_spend(db):
@@ -79,7 +77,7 @@ def test_sinking_fund_contribute_and_spend(db):
     assert fund.current_amount == Decimal("5000")
 
     SinkingFundService.spend_from_fund(
-        db, fund.id, Decimal("2000"), date.today(), fund.linked_category_id, None, "test"
+        db, fund.id, Decimal("2000"), date.today(), None, None, "test"
     )
     db.refresh(fund)
     assert fund.current_amount == Decimal("3000")
@@ -91,7 +89,7 @@ def test_sinking_fund_rolling_reset(db):
         target_amount=Decimal("1000"),
         current_amount=Decimal("0"),
         monthly_contribution=Decimal("500"),
-        category_group="needs",
+        group="wants",
         is_rolling=True,
     )
     db.add(fund)

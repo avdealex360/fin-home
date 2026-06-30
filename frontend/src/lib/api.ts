@@ -68,21 +68,7 @@ export interface FundSummary {
   target_date: string | null
   progress_percent: number
   is_rolling: boolean
-  linked_category_id: number | null
-  category_group?: string
-}
-
-export interface GoalSummary {
-  id: number
-  name: string
-  current_amount: number
-  target_amount: number
-  progress_percent: number
-  months_to_goal: number | null
-  deadline: string | null
-  monthly_contribution?: number
-  linked_account_name?: string | null
-  linked_category_id?: number | null
+  group: 'wants' | 'savings'
 }
 
 export interface MonthSummary {
@@ -101,7 +87,6 @@ export interface MonthSummary {
   salary_diff: number | null
   groups: GroupSummary[]
   debts: DebtSummary[]
-  goals: GoalSummary[]
   funds: FundSummary[]
   has_plan: boolean
 }
@@ -122,24 +107,28 @@ export interface AdviceTiers {
 export interface AllocationItem {
   id: number
   name: string
-  kind: 'category' | 'fund'
+  kind: 'category' | 'fund' | 'deposit'
   suggested_amount: number
-  group: string | null
-  allocation_level: number
+  group: 'needs' | 'wants' | 'savings'
 }
 
-export interface AllocationLevel {
-  level: number
+export interface AllocationBucket {
+  group: 'needs' | 'wants' | 'savings'
   label: string
+  percent: number
+  target_amount: number
   items: AllocationItem[]
-  total_suggested: number
 }
 
 export interface AllocationView {
   transaction: { id: number; amount: number; date: string; is_fully_allocated: boolean }
   unallocated: number
-  levels: AllocationLevel[]
-  existing: { category_id: number | null; fund_id: number | null; amount: number; allocation_level: number }[]
+  buckets: AllocationBucket[]
+  existing: { category_id: number | null; fund_id: number | null; to_deposit: boolean; amount: number }[]
+}
+
+export interface Deposit {
+  balance: number; rate: number; cap_day: number; start_date: string | null; monthly_target: number
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -205,12 +194,6 @@ export const api = {
   fundContribute: (id: number, b: unknown) => req('POST', `/funds/${id}/contribute`, b),
   fundSpend: (id: number, b: unknown) => req('POST', `/funds/${id}/spend`, b),
 
-  goals: () => req<GoalSummary[]>('GET', '/goals'),
-  createGoal: (b: unknown) => req<GoalSummary>('POST', '/goals', b),
-  updateGoal: (id: number, b: unknown) => req<GoalSummary>('PATCH', `/goals/${id}`, b),
-  deleteGoal: (id: number) => req('DELETE', `/goals/${id}`),
-  goalContribute: (id: number, b: unknown) => req('POST', `/goals/${id}/contribute`, b),
-
   debts: (includeClosed = false) =>
     req<DebtSummary[]>('GET', `/debts${includeClosed ? '?include_closed=true' : ''}`),
   createDebt: (b: unknown) => req<DebtSummary>('POST', '/debts', b),
@@ -231,10 +214,15 @@ export const api = {
   deletePlannedDebt: (id: number) => req('DELETE', `/plan/planned-debt/${id}`),
   closeMonth: (year?: number, month?: number) => req<any>('POST', `/plan/close${ym(year, month)}`),
 
-  deposit: () => req<any>('GET', '/deposit'),
-  updateDeposit: (b: unknown) => req<any>('POST', '/deposit', b),
+  deposit: () => req<Deposit>('GET', '/deposit'),
+  updateDeposit: (b: unknown) => req<Deposit>('POST', '/deposit', b),
+  depositContribute: (b: { amount: number; date?: string; note?: string }) =>
+    req<Deposit>('POST', '/deposit/contribute', b),
   depositCalc: (monthly: number, targetDate: string) =>
     req<any>('GET', `/deposit/calculator?monthly=${monthly}&target_date=${targetDate}`),
+
+  planMeter: (y: number, m: number) =>
+    req<Record<string, { allocated: number; target: number }>>('GET', `/plan/${y}/${m}/meter`),
 
   analytics: (year?: number, month?: number) => req<any>('GET', `/analytics${ym(year, month)}`),
 

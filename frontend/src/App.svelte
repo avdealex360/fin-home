@@ -14,6 +14,7 @@
   import Deposit from './routes/Deposit.svelte'
   import Analytics from './routes/Analytics.svelte'
   import More from './routes/More.svelte'
+  import Faq from './routes/Faq.svelte'
 
   let onboarded = $state<boolean | null>(null)
 
@@ -65,6 +66,8 @@
       <Analytics />
     {:else if $route === 'more'}
       <More />
+    {:else if $route === 'faq'}
+      <Faq />
     {:else}
       <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
     {/if}

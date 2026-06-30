@@ -2,7 +2,7 @@
 
 Nothing here is created automatically as undeletable. On startup we only ensure
 key/value *settings* exist (they are plain config and fully editable). The demo
-dataset (categories, debts, goals, funds) is loaded only on explicit user
+dataset (categories, debts, funds (копилки)) is loaded only on explicit user
 request via the onboarding endpoint.
 """
 
@@ -11,11 +11,11 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Category, Debt, Goal, Setting, SinkingFund
+from app.models import AppUser, Category, Debt, Setting, SinkingFund
 
 GROUP_PERCENTS = {"needs": 50, "wants": 30, "savings": 20}
 
-# allocation_level: 1=obligations, 2=variable needs, 4=wants+savings (3=sinking funds)
+# (name, group, sort_order, allocation_level)  level: 1=fixed obligation, 2=variable need, 4=want
 DEMO_CATEGORIES = [
     ("Аренда жилья", "needs", 1, 1),
     ("Продукты и быт", "needs", 2, 2),
@@ -32,9 +32,6 @@ DEMO_CATEGORIES = [
     ("Спорт и хобби", "wants", 13, 4),
     ("Подарки", "wants", 14, 4),
     ("Буфер (прочее)", "wants", 15, 4),
-    ("Подушка безопасности", "savings", 16, 4),
-    ("Вклад (крупная цель)", "savings", 17, 4),
-    ("Досрочное погашение долгов", "savings", 18, 4),
 ]
 
 DEMO_INCOME_CATEGORIES = [
@@ -55,35 +52,19 @@ DEFAULT_SETTINGS = {
     "deposit_start_date": "2025-03-18",
     "deposit_initial_lump": "0",
     "deposit_rate_schedule": "[]",
+    "deposit_monthly_target": "0",
     "onboarded": "",  # empty until the user picks demo or clean start
 }
 
 DEMO_SINKING_FUNDS = [
-    {
-        "name": "Ветеринар — операция",
-        "target_amount": Decimal("30000"),
-        "monthly_contribution": Decimal("10000"),
-        "target_date": date(date.today().year, min(date.today().month + 3, 12), 1),
-        "category_group": "needs",
-        "linked_category_name": "Питомец — ветеринар",
-    },
-    {
-        "name": "Ветеринар — плановый",
-        "target_amount": Decimal("5000"),
-        "monthly_contribution": Decimal("1700"),
-        "target_date": None,
-        "category_group": "needs",
-        "linked_category_name": "Питомец — ветеринар",
-        "is_rolling": True,
-    },
-    {
-        "name": "Подарки",
-        "target_amount": Decimal("10000"),
-        "monthly_contribution": Decimal("1500"),
-        "target_date": date(date.today().year, 12, 1),
-        "category_group": "wants",
-        "linked_category_name": "Подарки",
-    },
+    {"name": "Подушка безопасности", "target_amount": Decimal("150000"),
+     "monthly_contribution": Decimal("5000"), "target_date": None, "group": "savings", "is_rolling": False},
+    {"name": "Отпуск", "target_amount": Decimal("120000"),
+     "monthly_contribution": Decimal("8000"),
+     "target_date": date(date.today().year, 12, 1), "group": "wants", "is_rolling": False},
+    {"name": "Подарки", "target_amount": Decimal("10000"),
+     "monthly_contribution": Decimal("1500"),
+     "target_date": date(date.today().year, 12, 1), "group": "wants", "is_rolling": True},
 ]
 
 
@@ -169,44 +150,16 @@ def load_demo_data(db: Session) -> None:
     )
 
     db.flush()
-    pillow = _category_by_name(db, "Подушка безопасности")
-    big = _category_by_name(db, "Вклад (крупная цель)")
-
-    db.add(
-        Goal(
-            name="Подушка безопасности",
-            target_amount=Decimal("150000"),
-            current_amount=Decimal("0"),
-            monthly_contribution=Decimal("0"),
-            linked_account_name="Накопительный счёт",
-            linked_category_id=pillow.id if pillow else None,
-        )
-    )
-    db.add(
-        Goal(
-            name="Крупная цель",
-            target_amount=Decimal("1500000"),
-            current_amount=Decimal("0"),
-            deadline=date(date.today().year + 2, 12, 31),
-            monthly_contribution=Decimal("0"),
-            linked_account_name="Вклад",
-            linked_category_id=big.id if big else None,
-        )
-    )
-
-    db.flush()
-    for fund_data in DEMO_SINKING_FUNDS:
-        linked = _category_by_name(db, fund_data["linked_category_name"])
+    for fd in DEMO_SINKING_FUNDS:
         db.add(
             SinkingFund(
-                name=fund_data["name"],
-                target_amount=fund_data["target_amount"],
+                name=fd["name"],
+                target_amount=fd["target_amount"],
                 current_amount=Decimal("0"),
-                monthly_contribution=fund_data["monthly_contribution"],
-                target_date=fund_data.get("target_date"),
-                category_group=fund_data["category_group"],
-                is_rolling=fund_data.get("is_rolling", False),
-                linked_category_id=linked.id if linked else None,
+                monthly_contribution=fd["monthly_contribution"],
+                target_date=fd.get("target_date"),
+                group=fd["group"],
+                is_rolling=fd.get("is_rolling", False),
             )
         )
 

@@ -217,3 +217,40 @@ class AnalyticsService:
             .order_by(DebtPayment.date.desc())
             .all()
         )
+
+    @staticmethod
+    def split_503020(db: Session, year: int, month: int) -> dict:
+        from decimal import Decimal
+        from sqlalchemy import extract, func
+        from app.models import Category, Transaction
+        from app.services.dashboard import _savings_set_aside
+
+        def expense_for(group: str) -> Decimal:
+            return Decimal(str((
+                db.query(func.coalesce(func.sum(Transaction.amount), 0))
+                .join(Category, Category.id == Transaction.category_id)
+                .filter(Transaction.type == "expense", Category.group == group,
+                        extract("year", Transaction.date) == year,
+                        extract("month", Transaction.date) == month)
+                .scalar()
+            ) or "0"))
+
+        income = Decimal(str((
+            db.query(func.coalesce(func.sum(Transaction.amount), 0))
+            .filter(Transaction.type == "income",
+                    extract("year", Transaction.date) == year,
+                    extract("month", Transaction.date) == month)
+            .scalar()
+        ) or "0"))
+
+        needs, wants = expense_for("needs"), expense_for("wants")
+        savings = _savings_set_aside(db, year, month)
+        total = (needs + wants + savings) or Decimal("1")
+        out = {}
+        for name, fact, pct in (("needs", needs, 50), ("wants", wants, 30), ("savings", savings, 20)):
+            out[name] = {
+                "fact": float(fact),
+                "ideal": float(income * Decimal(pct) / Decimal("100")),
+                "percent": float(fact / total * 100),
+            }
+        return out

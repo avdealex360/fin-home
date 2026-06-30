@@ -48,6 +48,38 @@
       </div>
     {/if}
 
+    {#if data.split_503020}
+      {@const split = data.split_503020}
+      {@const buckets = [
+        { key: 'needs',   label: 'Нужды',     nominal: 50 },
+        { key: 'wants',   label: 'Желания',   nominal: 30 },
+        { key: 'savings', label: 'Сбережения', nominal: 20 },
+      ]}
+      <div>
+        <div class="section-label">Факт 50/30/20</div>
+        <div class="card stack">
+          {#each buckets as b}
+            {@const row = split[b.key]}
+            {@const pct = row?.percent ?? 0}
+            {@const isOver = b.key === 'savings' ? pct < b.nominal : pct > b.nominal}
+            <div>
+              <div class="row">
+                <span>{b.label} <span class="muted target">цель {b.nominal}%</span></span>
+                <span class="num">
+                  {money(row?.fact ?? 0)} ₽
+                  <span class={isOver ? 'over' : 'ok'}>{pct.toFixed(1)}%</span>
+                </span>
+              </div>
+              <div class="row muted small"><span>Идеал: {money(row?.ideal ?? 0)} ₽</span></div>
+              <div class="pbar">
+                <div class="pbar-fill" style="width:{Math.min(pct, 100)}%; background: {isOver ? 'var(--red)' : 'var(--green)'}"></div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     <div>
       <div class="section-label">Топ категорий</div>
       <div class="card stack">
@@ -109,5 +141,8 @@
 <style>
   .over { color: var(--red); }
   .under { color: var(--green); }
+  .ok { color: var(--green); }
   .pbar { margin-top: 4px; }
+  .target { font-size: 0.75rem; }
+  .small { font-size: 0.75rem; margin-top: 2px; }
 </style>
