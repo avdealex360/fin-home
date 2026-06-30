@@ -27,12 +27,12 @@
   }
 
   async function saveRate() {
-    await api.updateDeposit({ balance: dep.balance, rate: dep.rate, monthly_target: dep.monthly_target })
+    await api.updateDeposit({ rate: dep.rate })
     showToast('Ставка сохранена')
   }
 
   async function saveMonthlyTarget() {
-    await api.updateDeposit({ balance: dep.balance, rate: dep.rate, monthly_target: dep.monthly_target })
+    await api.updateDeposit({ monthly_target: dep.monthly_target })
     showToast('Цель сохранена')
   }
 </script>
@@ -45,7 +45,7 @@
   <div class="page">
     <div class="card stack">
       <div class="field">
-        <label>Текущий баланс</label>
+        <span class="field-label">Текущий баланс</span>
         <div class="balance-display num">{money(dep.balance)} ₽</div>
       </div>
       <div class="field">
