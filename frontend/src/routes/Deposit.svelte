@@ -8,6 +8,7 @@
   let monthly = $state(15000)
   let targetDate = $state(`${new Date().getFullYear() + 2}-12-31`)
   let calc = $state<any>(null)
+  let contributeAmount = $state<number | ''>('')
 
   $effect(() => {
     void $dataVersion
@@ -17,9 +18,22 @@
   async function runCalc() {
     calc = await api.depositCalc(monthly, targetDate)
   }
-  async function saveBalance() {
-    await api.updateDeposit({ balance: dep.balance, rate: dep.rate })
-    showToast('Вклад обновлён')
+
+  async function contribute() {
+    if (!contributeAmount || Number(contributeAmount) <= 0) return
+    dep = await api.depositContribute({ amount: Number(contributeAmount) })
+    contributeAmount = ''
+    showToast('Вклад пополнен')
+  }
+
+  async function saveRate() {
+    await api.updateDeposit({ balance: dep.balance, rate: dep.rate, monthly_target: dep.monthly_target })
+    showToast('Ставка сохранена')
+  }
+
+  async function saveMonthlyTarget() {
+    await api.updateDeposit({ balance: dep.balance, rate: dep.rate, monthly_target: dep.monthly_target })
+    showToast('Цель сохранена')
   }
 </script>
 
@@ -31,14 +45,33 @@
   <div class="page">
     <div class="card stack">
       <div class="field">
-        <label for="bal">Текущий баланс</label>
-        <input id="bal" class="input num" inputmode="numeric" bind:value={dep.balance} />
+        <label>Текущий баланс</label>
+        <div class="balance-display num">{money(dep.balance)} ₽</div>
       </div>
       <div class="field">
         <label for="rate">Ставка, % годовых</label>
         <input id="rate" class="input num" inputmode="decimal" bind:value={dep.rate} />
       </div>
-      <button class="btn btn-secondary" onclick={saveBalance}>Сохранить</button>
+      <button class="btn btn-secondary" onclick={saveRate}>Сохранить ставку</button>
+    </div>
+
+    <div class="card stack">
+      <div class="section-label">Пополнить вклад</div>
+      <div class="field">
+        <label for="contribute">Сумма пополнения</label>
+        <input id="contribute" class="input num" inputmode="numeric" bind:value={contributeAmount} placeholder="0" />
+      </div>
+      <button class="btn btn-primary" onclick={contribute} disabled={!contributeAmount || Number(contributeAmount) <= 0}>
+        <i class="ti ti-plus"></i> Пополнить
+      </button>
+    </div>
+
+    <div class="card stack">
+      <div class="field">
+        <label for="monthly-target">Цель пополнения в месяц</label>
+        <input id="monthly-target" class="input num" inputmode="numeric" bind:value={dep.monthly_target} />
+      </div>
+      <button class="btn btn-secondary" onclick={saveMonthlyTarget}>Сохранить цель</button>
     </div>
 
     <div class="card stack">
@@ -84,6 +117,11 @@
 {/if}
 
 <style>
+  .balance-display {
+    font-size: var(--text-xl);
+    color: var(--gold);
+    padding: 8px 0;
+  }
   .result { font-size: var(--text-xl); color: var(--gold); }
   .rows { display: flex; flex-direction: column; gap: 6px; }
   .small { font-size: var(--text-sm); }
