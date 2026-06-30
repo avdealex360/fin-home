@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Category, CategoryLimit, MonthlyPlan
@@ -126,6 +127,64 @@ class PlanService:
         if item:
             db.delete(item)
             db.commit()
+
+    @staticmethod
+    def meter_503020(db: Session, year: int, month: int) -> dict:
+        from app.models import Category, CategoryLimit
+        from app.services.deposit import DepositService
+
+        plan = PlanService.get_or_create_plan(db, year, month)
+        income = plan.expected_income or Decimal("0")
+        out = {}
+        for group, pct in (("needs", 50), ("wants", 30), ("savings", 20)):
+            target = income * Decimal(pct) / Decimal("100")
+            if group in ("needs", "wants"):
+                allocated = (
+                    db.query(func.coalesce(func.sum(CategoryLimit.limit_amount), 0))
+                    .join(Category, Category.id == CategoryLimit.category_id)
+                    .filter(CategoryLimit.plan_id == plan.id, Category.group == group)
+                    .scalar()
+                ) or Decimal("0")
+            else:
+                from app.models import SinkingFund
+
+                fund_sum = (
+                    db.query(func.coalesce(func.sum(SinkingFund.monthly_contribution), 0))
+                    .filter(SinkingFund.is_active.is_(True), SinkingFund.group == "savings")
+                    .scalar()
+                ) or Decimal("0")
+                allocated = Decimal(fund_sum) + DepositService.get_monthly_target(db)
+            out[group] = {"allocated": float(allocated), "target": float(target)}
+        return out
+
+    @staticmethod
+    def fit_503020(db: Session, year: int, month: int) -> MonthlyPlan:
+        from app.models import Category, CategoryLimit
+
+        plan = PlanService.get_or_create_plan(db, year, month)
+        income = plan.expected_income or Decimal("0")
+        for group, pct in (("needs", 50), ("wants", 30)):
+            target = income * Decimal(pct) / Decimal("100")
+            cats = db.query(Category).filter(Category.is_hidden.is_(False), Category.group == group).all()
+            limits = {lim.category_id: lim for lim in plan.limits if lim.category_id in {c.id for c in cats}}
+            current_total = sum((lim.limit_amount for lim in limits.values()), Decimal("0"))
+            if current_total > 0:
+                # proportionally scale existing limits
+                factor = target / current_total
+                for lim in limits.values():
+                    lim.limit_amount = (lim.limit_amount * factor).quantize(Decimal("0.01"))
+            elif cats:
+                # fallback: equal split across non-hidden categories in the group
+                per = (target / len(cats)).quantize(Decimal("0.01"))
+                for c in cats:
+                    existing = limits.get(c.id)
+                    if existing:
+                        existing.limit_amount = per
+                    else:
+                        db.add(CategoryLimit(plan_id=plan.id, category_id=c.id, limit_amount=per))
+        db.commit()
+        db.refresh(plan)
+        return plan
 
 
 from app.services.deposit import DepositService  # noqa: E402,F401  (moved; kept for back-compat imports)

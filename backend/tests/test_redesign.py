@@ -145,3 +145,16 @@ def test_analytics_has_503020_split(db):
     data = AnalyticsService.split_503020(db, y, mth)
     assert set(data.keys()) == {"needs", "wants", "savings"}
     assert set(data["needs"].keys()) == {"fact", "ideal", "percent"}
+
+
+def test_plan_meter_and_fit(db):
+    ensure_settings(db); load_demo_data(db)
+    from app.services.plan import PlanService
+    y, mth = date.today().year, date.today().month
+    plan = PlanService.get_or_create_plan(db, y, mth)
+    plan.expected_income = Decimal("100000"); db.commit()
+
+    PlanService.fit_503020(db, y, mth)
+    meter = PlanService.meter_503020(db, y, mth)
+    assert abs(meter["needs"]["target"] - 50000) < 1
+    assert abs(meter["needs"]["allocated"] - 50000) < 1  # fit made needs limits sum to target

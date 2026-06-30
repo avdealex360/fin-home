@@ -45,6 +45,11 @@ def get_plan(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(get
     return plan_dict(plan)
 
 
+@router.get("/{year}/{month}/meter")
+def get_meter(year: int, month: int, db: Session = Depends(get_db)):
+    return PlanService.meter_503020(db, year, month)
+
+
 @router.post("")
 def save_plan(
     body: SavePlanBody,
@@ -52,9 +57,14 @@ def save_plan(
     db: Session = Depends(get_db),
 ):
     year, month = ym
-    plan = PlanService.save_plan(
-        db, year, month, body.expected_income, auto_distribute=body.auto_distribute
-    )
+    if body.auto_distribute and body.expected_income > 0:
+        # Save income first, then proportionally fit limits via fit_503020
+        PlanService.save_plan(db, year, month, body.expected_income, auto_distribute=False)
+        plan = PlanService.fit_503020(db, year, month)
+    else:
+        plan = PlanService.save_plan(
+            db, year, month, body.expected_income, auto_distribute=False
+        )
     return plan_dict(plan)
 
 
