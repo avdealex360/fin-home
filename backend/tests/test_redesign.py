@@ -77,7 +77,38 @@ def test_deposit_contribute_grows_balance(db):
     assert db.query(DepositContribution).count() == 1
 
 
+from app.models import Transaction, MonthlyPlan
+from app.services.allocation import (
+    get_allocation_buckets, allocate_income, AllocationInput, get_unallocated_for_tx,
+)
 from app.services.sinking_funds import SinkingFundService
+
+
+def test_buckets_mirror_503020(db):
+    ensure_settings(db); load_demo_data(db)
+    y, mth = date.today().year, date.today().month
+    buckets = get_allocation_buckets(db, y, mth, Decimal("100000"))
+    groups = {b.group for b in buckets}
+    assert groups == {"needs", "wants", "savings"}
+    by = {b.group: b for b in buckets}
+    assert by["needs"].percent == 50 and by["needs"].target_amount == Decimal("50000")
+    assert by["wants"].percent == 30
+    assert by["savings"].percent == 20
+    # savings bucket includes the Вклад destination
+    assert any(i.kind == "deposit" for i in by["savings"].items)
+
+
+def test_allocate_to_deposit_grows_deposit(db):
+    ensure_settings(db); load_demo_data(db)
+    from app.services.deposit import DepositService
+    tx = Transaction(type="income", amount=Decimal("20000"), date=date.today())
+    db.add(tx); db.commit()
+    before = DepositService.get_balance(db)
+    allocate_income(db, tx.id, [AllocationInput(to_deposit=True, amount=Decimal("20000"), group="savings")])
+    db.refresh(tx)
+    assert tx.is_fully_allocated
+    assert DepositService.get_balance(db) == before + Decimal("20000")
+    assert get_unallocated_for_tx(db, tx) == Decimal("0")
 
 
 def test_fund_create_and_spend_with_group(db):

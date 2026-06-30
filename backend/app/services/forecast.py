@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Debt, MonthlyPlan, SinkingFund
-from app.services.allocation import get_allocation_levels
+from app.services.allocation import get_allocation_buckets
 from app.services.plan import PlanService
 from app.util import _shift_month
 
@@ -60,8 +60,10 @@ class ForecastService:
                 )
                 income = cur_plan.expected_income if cur_plan else Decimal("110000")
 
-            levels = get_allocation_levels(db, year, month, income)
-            planned = sum(l.total_suggested for l in levels)
+            buckets = get_allocation_buckets(db, year, month, income)
+            planned = sum(
+                item.suggested_amount for b in buckets for item in b.items
+            )
 
             debt_pay = Decimal("0")
             events: list[str] = []
