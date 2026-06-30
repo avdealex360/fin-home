@@ -11,8 +11,6 @@ from app.models import (
     Category,
     Debt,
     DebtPayment,
-    # Goal,           # removed in two-pots redesign (Task 1)
-    # GoalContribution,  # removed in two-pots redesign (Task 1)
     MonthlyPlan,
     PlannedDebtPayment,
     PlannedExpense,
@@ -74,8 +72,14 @@ def fund_dict(f: SinkingFund) -> dict:
     }
 
 
-# goal_dict and goal_contribution_dict removed in two-pots redesign (Task 1)
-# Full rewrite comes in Tasks 6 and 9.
+def deposit_dict(s: dict) -> dict:
+    return {
+        "balance": float(s["balance"]),
+        "rate": float(s["rate"]),
+        "cap_day": s["cap_day"],
+        "start_date": s["start_date"].isoformat() if s["start_date"] else None,
+        "monthly_target": float(s["monthly_target"]),
+    }
 
 
 def debt_dict(d: Debt) -> dict:

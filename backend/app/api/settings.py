@@ -15,7 +15,6 @@ from app.serializers import (
     category_dict,
     debt_dict,
     fund_dict,
-    # goal_dict,  # removed in two-pots redesign (Task 1)
     transaction_dict,
 )
 from app.services.exchange import update_eur_usd_rate
@@ -53,13 +52,12 @@ async def fetch_eur_rate(db: Session = Depends(get_db)):
 
 @router.get("/export/json")
 def export_json(db: Session = Depends(get_db)):
-    from app.models import AppUser, Category, Debt, Goal, SinkingFund
+    from app.models import AppUser, Category, Debt, SinkingFund
 
     data = {
         "categories": [category_dict(c) for c in db.query(Category).all()],
         "transactions": [transaction_dict(t) for t in db.query(Transaction).all()],
         "debts": [debt_dict(d) for d in db.query(Debt).all()],
-        "goals": [goal_dict(g) for g in db.query(Goal).all()],
         "funds": [fund_dict(f) for f in db.query(SinkingFund).all()],
         "users": [{"id": u.id, "name": u.name} for u in db.query(AppUser).all()],
         "settings": {s.key: s.value for s in db.query(Setting).all()},

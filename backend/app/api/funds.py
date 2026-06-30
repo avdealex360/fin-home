@@ -20,10 +20,9 @@ class FundBody(BaseModel):
     name: str
     target_amount: Decimal
     monthly_contribution: Decimal = Decimal("0")
-    category_group: str = "needs"
+    group: str = "savings"
     target_date: date | None = None
     is_rolling: bool = False
-    linked_category_id: int | None = None
 
 
 class ContributeBody(BaseModel):
@@ -52,10 +51,9 @@ def create_fund(body: FundBody, db: Session = Depends(get_db)):
         name=body.name,
         target_amount=body.target_amount,
         monthly_contribution=body.monthly_contribution,
-        category_group=body.category_group,
+        group=body.group,
         target_date=body.target_date,
         is_rolling=body.is_rolling,
-        linked_category_id=body.linked_category_id,
     )
     return fund_dict(f)
 

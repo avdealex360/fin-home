@@ -209,3 +209,55 @@ def test_fit_503020_proportional_scaling(db):
     assert abs(lim_large.limit_amount - Decimal("37500")) < 50, (
         f"proportional scaling failed: large={lim_large.limit_amount}, expected ≈37500"
     )
+
+
+def test_api_contract(tmp_path):
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import app.models  # noqa: F401
+    import app.main as main
+    from app.db import Base, get_db
+
+    # Use a file-based SQLite so connections work across threads
+    db_path = tmp_path / "test_api.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+
+    # Seed data in one session
+    seed_session = TestSession()
+    ensure_settings(seed_session)
+    load_demo_data(seed_session)
+    seed_session.close()
+
+    # Override get_db to produce sessions from our test engine
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    # point the app's DB dependency at our test sessions
+    main.app.dependency_overrides = {}
+    main.app.dependency_overrides[get_db] = override_get_db
+
+    client = TestClient(main.app)
+
+    assert client.get("/api/goals").status_code in (404, 405)
+
+    f = client.get("/api/funds").json()[0]
+    assert "group" in f and "category_group" not in f
+
+    dep = client.post("/api/deposit/contribute", json={"amount": 5000}).json()
+    assert dep["balance"] >= 5000
+
+    tx = client.post("/api/transactions", json={"type": "income", "amount": 30000,
+                                                "date": str(date.today())}).json()
+    view = client.get(f"/api/allocation/{tx['id']}").json()
+    assert "buckets" in view
+
+    # Cleanup
+    main.app.dependency_overrides = {}
+    engine.dispose()

@@ -437,11 +437,9 @@ class DepositStaleRule(Rule):
 
         last = db.query(func.max(DepositSnapshot.date)).scalar()
         if last and (today - last).days > 30:
-            goal = db.query(Goal).filter(Goal.name == "Машина").first()
-            contrib = goal.monthly_contribution if goal else Decimal("5000")
             return Advice(
                 priority=self.priority,
-                message=f"Вклад на машину не пополнялся месяц — добавьте хотя бы {contrib:,.0f} ₽".replace(",", " "),
+                message="Вклад не пополнялся больше месяца — не забудьте пополнить",
                 category=self.category,
                 tier=self.tier,
             )
@@ -490,16 +488,7 @@ class EmergencyFundRule(Rule):
     tier = "info"
 
     def evaluate(self, db: Session, year: int, month: int, today: date) -> Advice | None:
-        goal = db.query(Goal).filter(Goal.name == "Подушка безопасности").first()
-        if not goal:
-            return None
-        if goal.current_amount >= Decimal("150000") and get_setting(db, "pillow_150k_notified") != "1":
-            return Advice(
-                priority=self.priority,
-                message="Подушка безопасности 150 000 ₽ собрана! Следующая цель — 500 000 ₽",
-                category=self.category,
-                tier=self.tier,
-            )
+        # Goals removed in two-pots redesign; this rule no longer fires
         return None
 
 
@@ -602,12 +591,10 @@ class RuleEngine:
 
     @staticmethod
     def mark_shown(db: Session, advice_tiers: dict[str, list[Advice]]) -> None:
-        from app.models import Debt, Goal
+        from app.models import Debt
 
         for tier_list in advice_tiers.values():
             for advice in tier_list:
-                if "Подушка безопасности 150 000" in advice.message:
-                    set_setting(db, "pillow_150k_notified", "1")
                 if "закрыт!" in advice.message.lower() or "закрыт." in advice.message.lower():
                     closed = db.query(Debt).filter(Debt.is_closed.is_(True)).order_by(Debt.id.desc()).first()
                     if closed:
