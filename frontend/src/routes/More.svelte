@@ -86,6 +86,8 @@
 <div class="page-header"><h1>Ещё</h1></div>
 
 <div class="page">
+  <a class="btn btn-ghost faq-btn" href="#/faq"><i class="ti ti-help"></i> Как это работает</a>
+
   <!-- Funds -->
   <section>
     <div class="row section-label"><span>Копилки</span>
@@ -212,6 +214,7 @@
 </div>
 
 <style>
+  .faq-btn { display: flex; align-items: center; gap: var(--space-2); justify-content: center; border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 12px; }
   section { display: flex; flex-direction: column; gap: var(--space-2); }
   .actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
   .danger { color: var(--red); }

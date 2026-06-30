@@ -30,6 +30,7 @@
       <span class="muted">Пустой бюджет. Категории, копилки и цели создаёте сами.</span>
     </button>
   </div>
+  <a class="muted faq-link" href="#/faq">Как это работает →</a>
 </div>
 
 <style>
@@ -58,4 +59,5 @@
   }
   .opt i { font-size: 24px; color: var(--blue); }
   .opt strong { font-size: var(--text-lg); }
+  .faq-link { font-size: var(--text-sm); margin-top: var(--space-2); }
 </style>
