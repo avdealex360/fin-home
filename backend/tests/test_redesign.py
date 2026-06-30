@@ -158,3 +158,54 @@ def test_plan_meter_and_fit(db):
     meter = PlanService.meter_503020(db, y, mth)
     assert abs(meter["needs"]["target"] - 50000) < 1
     assert abs(meter["needs"]["allocated"] - 50000) < 1  # fit made needs limits sum to target
+
+
+def test_fit_503020_proportional_scaling(db):
+    """fit_503020 must SCALE existing limits proportionally, not split equally."""
+    ensure_settings(db); load_demo_data(db)
+    from app.services.plan import PlanService
+    from app.models import CategoryLimit
+
+    y, mth = date.today().year, date.today().month
+    plan = PlanService.get_or_create_plan(db, y, mth)
+    plan.expected_income = Decimal("100000"); db.commit()
+
+    # Pick two non-hidden needs categories to pre-seed with a 1:3 ratio
+    needs_cats = (
+        db.query(Category)
+        .filter(Category.group == "needs", Category.is_hidden.is_(False))
+        .limit(2)
+        .all()
+    )
+    assert len(needs_cats) >= 2, "demo data must have at least 2 non-hidden needs categories"
+    cat_small, cat_large = needs_cats[0], needs_cats[1]
+
+    db.add(CategoryLimit(plan_id=plan.id, category_id=cat_small.id, limit_amount=Decimal("1000")))
+    db.add(CategoryLimit(plan_id=plan.id, category_id=cat_large.id, limit_amount=Decimal("3000")))
+    db.commit()
+
+    PlanService.fit_503020(db, y, mth)
+
+    # Re-query the two limits fresh from db
+    lim_small = (
+        db.query(CategoryLimit)
+        .filter(CategoryLimit.plan_id == plan.id, CategoryLimit.category_id == cat_small.id)
+        .one()
+    )
+    lim_large = (
+        db.query(CategoryLimit)
+        .filter(CategoryLimit.plan_id == plan.id, CategoryLimit.category_id == cat_large.id)
+        .one()
+    )
+
+    needs_target = Decimal("50000")  # 50% of 100000
+    total = lim_small.limit_amount + lim_large.limit_amount
+    assert abs(total - needs_target) < 1, f"needs limits sum {total} != target {needs_target}"
+
+    # 1:3 ratio → small ≈ 12500, large ≈ 37500
+    assert abs(lim_small.limit_amount - Decimal("12500")) < 50, (
+        f"proportional scaling failed: small={lim_small.limit_amount}, expected ≈12500"
+    )
+    assert abs(lim_large.limit_amount - Decimal("37500")) < 50, (
+        f"proportional scaling failed: large={lim_large.limit_amount}, expected ≈37500"
+    )
