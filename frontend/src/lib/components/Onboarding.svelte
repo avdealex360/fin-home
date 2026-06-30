@@ -22,12 +22,12 @@
     <button class="card opt" disabled={busy} onclick={() => pick('demo')}>
       <i class="ti ti-sparkles"></i>
       <strong>Загрузить пример</strong>
-      <span class="muted">Готовые категории, копилки, долги и цели — чтобы сразу осмотреться. Всё можно изменить или удалить.</span>
+      <span class="muted">Готовые категории, копилки и долги — чтобы сразу осмотреться. Всё можно изменить или удалить.</span>
     </button>
     <button class="card opt" disabled={busy} onclick={() => pick('clean')}>
       <i class="ti ti-file"></i>
       <strong>Начать с чистого листа</strong>
-      <span class="muted">Пустой бюджет. Категории, копилки и цели создаёте сами.</span>
+      <span class="muted">Пустой бюджет. Категории, копилки и долги создаёте сами.</span>
     </button>
   </div>
   <a class="muted faq-link" href="#/faq">Как это работает →</a>

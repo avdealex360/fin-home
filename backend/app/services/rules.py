@@ -533,7 +533,7 @@ class QuarterlyCheckupRule(Rule):
             return None
         return Advice(
             priority=self.priority,
-            message="Ежеквартальный чекап: пересмотрите копилки, 50/30/20 и цели",
+            message="Ежеквартальный чекап: пересмотрите копилки, вклад и 50/30/20",
             category=self.category,
             tier=self.tier,
         )
