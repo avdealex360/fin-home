@@ -75,3 +75,18 @@ def test_deposit_contribute_grows_balance(db):
     assert new_balance == start + Decimal("10000")
     assert DepositService.get_balance(db) == start + Decimal("10000")
     assert db.query(DepositContribution).count() == 1
+
+
+from app.services.sinking_funds import SinkingFundService
+
+
+def test_fund_create_and_spend_with_group(db):
+    f = SinkingFundService.create(db, name="Отпуск", target_amount=Decimal("100000"),
+                                  monthly_contribution=Decimal("8000"), group="wants")
+    assert f.group == "wants"
+    SinkingFundService.contribute(db, f.id, Decimal("8000"), date.today())
+    tx = SinkingFundService.spend_from_fund(db, f.id, Decimal("3000"), date.today(),
+                                            category_id=None, user_id=None, comment=None)
+    db.refresh(f)
+    assert f.current_amount == Decimal("5000")
+    assert tx.is_sinking_fund_spend and tx.fund_id == f.id
