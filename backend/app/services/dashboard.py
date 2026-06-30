@@ -5,10 +5,11 @@ from decimal import Decimal
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Category, MonthlyPlan, Transaction  # Goal removed in two-pots redesign (Task 1)
+from app.models import Category, MonthlyPlan, Transaction
 from app.seed import GROUP_PERCENTS
 from app.services.allocation import get_unallocated_total, is_month_fully_allocated
 from app.services.debts import get_active_debts_sorted, monthly_interest_cost
+from app.services.deposit import DepositService
 from app.services.exchange import income_eur_total, salary_comparison
 from app.services.sinking_funds import FundSummary, SinkingFundService
 
@@ -44,17 +45,6 @@ class DebtSummary:
 
 
 @dataclass
-class GoalSummary:
-    id: int
-    name: str
-    current_amount: Decimal
-    target_amount: Decimal
-    progress_percent: float
-    months_to_goal: int | None
-    deadline: date | None
-
-
-@dataclass
 class MonthSummary:
     year: int
     month: int
@@ -73,7 +63,6 @@ class MonthSummary:
     salary_diff: Decimal | None = None
     groups: list[GroupSummary] = field(default_factory=list)
     debts: list[DebtSummary] = field(default_factory=list)
-    goals: list[GoalSummary] = field(default_factory=list)
     funds: list[FundSummary] = field(default_factory=list)
     has_plan: bool = False
 
@@ -87,6 +76,25 @@ def _usage_color(percent: float) -> str:
     if percent < 90:
         return "yellow"
     return "red"
+
+
+def _savings_set_aside(db: Session, year: int, month: int) -> Decimal:
+    from app.models import DepositContribution, SinkingFund, SinkingFundContribution
+    dep = (
+        db.query(func.coalesce(func.sum(DepositContribution.amount), 0))
+        .filter(extract("year", DepositContribution.date) == year,
+                extract("month", DepositContribution.date) == month)
+        .scalar()
+    ) or Decimal("0")
+    fund = (
+        db.query(func.coalesce(func.sum(SinkingFundContribution.amount), 0))
+        .join(SinkingFund, SinkingFund.id == SinkingFundContribution.fund_id)
+        .filter(SinkingFund.group == "savings",
+                extract("year", SinkingFundContribution.date) == year,
+                extract("month", SinkingFundContribution.date) == month)
+        .scalar()
+    ) or Decimal("0")
+    return Decimal(dep) + Decimal(fund)
 
 
 from app.services.settings_store import get_setting, set_setting
@@ -123,18 +131,7 @@ class DashboardService:
             .scalar()
         ) or Decimal("0")
 
-        savings_spent = (
-            db.query(func.coalesce(func.sum(Transaction.amount), 0))
-            .join(Category)
-            .filter(
-                Transaction.type.in_(["expense", "transfer"]),
-                Category.group == "savings",
-                extract("year", Transaction.date) == year,
-                extract("month", Transaction.date) == month,
-            )
-            .scalar()
-        ) or Decimal("0")
-
+        savings_spent = _savings_set_aside(db, year, month)
         savings_rate = float(savings_spent / income_fact * 100) if income_fact > 0 else 0.0
         remaining = income_fact - total_spent
         deposit_balance = Decimal(get_setting(db, "deposit_balance", "0"))
@@ -144,10 +141,16 @@ class DashboardService:
 
         last_salary, salary_diff = salary_comparison(db, year, month, income_fact)
 
+        income_base = income_plan or income_fact
+
         groups = []
         for group_name, percent in GROUP_PERCENTS.items():
-            group_limit = DashboardService._group_limit(db, plan, group_name, income_plan, percent)
-            spent = DashboardService._group_spent(db, year, month, group_name)
+            if group_name == "savings":
+                spent = _savings_set_aside(db, year, month)
+                group_limit = income_base * Decimal(percent) / Decimal("100")
+            else:
+                group_limit = DashboardService._group_limit(db, plan, group_name, income_plan, percent)
+                spent = DashboardService._group_spent(db, year, month, group_name)
             rem = group_limit - spent
             usage = float(spent / group_limit * 100) if group_limit > 0 else 0.0
             groups.append(
@@ -196,28 +199,6 @@ class DashboardService:
                 )
             )
 
-        goals = []
-        from app.services.goals import months_to_goal_with_capitalization
-
-        for goal in db.query(Goal).filter(Goal.is_active).order_by(Goal.id).all():
-            progress = (
-                float(goal.current_amount / goal.target_amount * 100)
-                if goal.target_amount > 0
-                else 0.0
-            )
-            months = months_to_goal_with_capitalization(db, goal)
-            goals.append(
-                GoalSummary(
-                    id=goal.id,
-                    name=goal.name,
-                    current_amount=goal.current_amount,
-                    target_amount=goal.target_amount,
-                    progress_percent=progress,
-                    months_to_goal=months,
-                    deadline=goal.deadline,
-                )
-            )
-
         funds = SinkingFundService.get_summaries(db)
 
         return MonthSummary(
@@ -236,7 +217,6 @@ class DashboardService:
             salary_diff=salary_diff,
             groups=groups,
             debts=debts,
-            goals=goals,
             funds=funds,
             has_plan=plan is not None and income_plan > 0,
         )

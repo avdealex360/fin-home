@@ -121,3 +121,18 @@ def test_fund_create_and_spend_with_group(db):
     db.refresh(f)
     assert f.current_amount == Decimal("5000")
     assert tx.is_sinking_fund_spend and tx.fund_id == f.id
+
+
+def test_dashboard_savings_counts_deposit(db):
+    ensure_settings(db); load_demo_data(db)
+    from app.services.deposit import DepositService
+    from app.services.dashboard import DashboardService
+    y, mth = date.today().year, date.today().month
+    db.add(Transaction(type="income", amount=Decimal("100000"), date=date.today())); db.commit()
+    DepositService.contribute(db, Decimal("15000"), source="manual")
+
+    s = DashboardService.get_month_summary(db, y, mth)
+    sav = next(g for g in s.groups if g.name == "savings")
+    assert sav.spent >= Decimal("15000")
+    assert {g.name for g in s.groups} == {"needs", "wants", "savings"}
+    assert not hasattr(s, "goals") or s.goals == []
