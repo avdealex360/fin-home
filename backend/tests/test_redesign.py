@@ -315,3 +315,67 @@ def test_patch_fund_updates_group(tmp_path):
 
     main.app.dependency_overrides = {}
     engine.dispose()
+
+
+def test_deposit_update_cannot_write_balance(tmp_path):
+    """POST /api/deposit must NOT allow overwriting deposit_balance directly.
+
+    Balance is grow-only and must only change via POST /api/deposit/contribute
+    or DepositService.rollback_for_income. Sending a 'balance' field in the
+    update body must be silently ignored (Pydantic strips extra fields) so the
+    balance stays at whatever contribute set it to.
+    """
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import app.models  # noqa: F401
+    import app.main as main
+    from app.db import Base, get_db
+
+    db_path = tmp_path / "test_deposit_hardening.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+
+    seed_session = TestSession()
+    ensure_settings(seed_session)
+    load_demo_data(seed_session)
+    seed_session.close()
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main.app.dependency_overrides = {}
+    main.app.dependency_overrides[get_db] = override_get_db
+
+    client = TestClient(main.app)
+
+    # 1. Contribute 10 000 — balance must be 10 000
+    resp = client.post("/api/deposit/contribute", json={"amount": 10000})
+    assert resp.status_code == 200, f"contribute failed: {resp.text}"
+    assert resp.json()["balance"] == 10000.0
+
+    # 2. Attempt to lower balance to 0 via the settings update endpoint.
+    #    Include "balance": 0 alongside a valid field so the body is not empty.
+    update_resp = client.post("/api/deposit", json={"balance": 0, "rate": 5.0})
+    # The request must succeed (Pydantic ignores the unknown 'balance' field) …
+    assert update_resp.status_code == 200, f"update endpoint error: {update_resp.text}"
+
+    # 3. … but balance must remain unchanged at 10 000
+    balance_after = update_resp.json()["balance"]
+    assert balance_after == 10000.0, (
+        f"balance was modified by the update endpoint! Got {balance_after}, expected 10000.0"
+    )
+
+    # Cross-check via GET
+    get_balance = client.get("/api/deposit").json()["balance"]
+    assert get_balance == 10000.0, (
+        f"GET /api/deposit shows {get_balance} after attempted balance write"
+    )
+
+    main.app.dependency_overrides = {}
+    engine.dispose()

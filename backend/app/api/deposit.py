@@ -16,7 +16,8 @@ router = APIRouter(prefix="/api/deposit", tags=["deposit"])
 
 
 class DepositSettingsBody(BaseModel):
-    balance: Decimal | None = None
+    # NOTE: balance is intentionally excluded — balance is grow-only and must
+    # only change via POST /api/deposit/contribute or DepositService.rollback_for_income.
     rate: Decimal | None = None
     cap_day: int | None = None
     start_date: date_type | None = None
@@ -51,8 +52,6 @@ def get_deposit(db: Session = Depends(get_db)):
 
 @router.post("")
 def update_deposit(body: DepositSettingsBody, db: Session = Depends(get_db)):
-    if body.balance is not None:
-        set_setting(db, "deposit_balance", str(body.balance))
     if body.rate is not None:
         set_setting(db, "deposit_rate", str(body.rate))
     if body.cap_day is not None:
