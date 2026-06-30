@@ -67,6 +67,7 @@ def update_fund(fund_id: int, body: FundBody, db: Session = Depends(get_db)):
             name=body.name,
             target_amount=body.target_amount,
             monthly_contribution=body.monthly_contribution,
+            group=body.group,
             target_date=body.target_date,
             is_rolling=body.is_rolling,
         )

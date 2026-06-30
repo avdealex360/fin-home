@@ -261,3 +261,57 @@ def test_api_contract(tmp_path):
     # Cleanup
     main.app.dependency_overrides = {}
     engine.dispose()
+
+
+def test_patch_fund_updates_group(tmp_path):
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import app.models  # noqa: F401
+    import app.main as main
+    from app.db import Base, get_db
+
+    db_path = tmp_path / "test_fund_group.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+
+    seed_session = TestSession()
+    ensure_settings(seed_session)
+    load_demo_data(seed_session)
+    seed_session.close()
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main.app.dependency_overrides = {}
+    main.app.dependency_overrides[get_db] = override_get_db
+
+    client = TestClient(main.app)
+
+    funds = client.get("/api/funds").json()
+    assert funds, "demo data must create at least one fund"
+    first = funds[0]
+    fund_id = first["id"]
+    original_group = first["group"]
+    new_group = "wants" if original_group == "savings" else "savings"
+
+    resp = client.patch(f"/api/funds/{fund_id}", json={
+        "name": first["name"],
+        "target_amount": str(first["target_amount"]),
+        "monthly_contribution": str(first.get("monthly_contribution", "0")),
+        "group": new_group,
+    })
+    assert resp.status_code == 200, f"PATCH failed: {resp.text}"
+    assert resp.json()["group"] == new_group
+
+    # Confirm via GET
+    updated = next(f for f in client.get("/api/funds").json() if f["id"] == fund_id)
+    assert updated["group"] == new_group
+
+    main.app.dependency_overrides = {}
+    engine.dispose()
