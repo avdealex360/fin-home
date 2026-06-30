@@ -24,6 +24,7 @@ def analytics(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(ge
         "cash_flow": ForecastService.cash_flow_forecast(db, 3),
         "cascade": ForecastService.cascade_after_debt_close(db),
         "pair": PairAnalyticsService.monthly_breakdown(db, year, month),
+        "split_503020": AnalyticsService.split_503020(db, year, month),
     }
 
 

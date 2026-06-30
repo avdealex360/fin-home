@@ -136,3 +136,12 @@ def test_dashboard_savings_counts_deposit(db):
     assert sav.spent >= Decimal("15000")
     assert {g.name for g in s.groups} == {"needs", "wants", "savings"}
     assert not hasattr(s, "goals") or s.goals == []
+
+
+def test_analytics_has_503020_split(db):
+    ensure_settings(db); load_demo_data(db)
+    from app.services.analytics import AnalyticsService
+    y, mth = date.today().year, date.today().month
+    data = AnalyticsService.split_503020(db, y, mth)
+    assert set(data.keys()) == {"needs", "wants", "savings"}
+    assert set(data["needs"].keys()) == {"fact", "ideal", "percent"}
