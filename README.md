@@ -1,24 +1,65 @@
 # Семейный бюджет (fin-home)
 
-Веб-приложение для семейного бюджета по методу **50/30/20**. Данные на вашем VPS, доступ с телефона и браузера.
+Веб-приложение для семейного бюджета по методу **50/30/20**. Устанавливается как PWA, работает на телефоне и в браузере, данные — на вашем VPS.
 
-**Production:** https://194.154.29.93  
+**Production:** https://194.154.29.93
 **Репозиторий:** https://github.com/avdealex360/fin-home
 
 ---
 
-## Быстрый старт
+## Идея: два «пота» и правило 50/30/20
+
+Доход месяца делится на три корзины и распределяется по адресатам:
+
+| Корзина | Доля | Куда уходит |
+|---------|------|-------------|
+| **Нужды** | 50% | категории обязательных расходов (аренда, продукты, транспорт, кредиты) |
+| **Желания** | 30% | категории необязательных трат + **копилки** группы «желания» |
+| **Сбережения** | 20% | **Вклад** + **копилки** группы «сбережения» |
+
+«Откладывание» — это две физически разные кубышки:
+
+- **Копилка** — расходуемый конверт «под матрасом»: можно **отложить** и **потратить** на небольшие цели.
+- **Вклад** — замороженная кубышка: баланс **только растёт** (пополнение + проценты), снять нельзя, есть калькулятор капитализации.
+
+Единый источник правды — **План**: и распределение дохода, и дашборд читают цифры из него. Метрика 50/30/20 видна везде — при вводе расхода, в плане, в аналитике и на дашборде — чтобы было легко следовать правилу.
+
+---
+
+## Быстрый старт (локально)
 
 ```bash
 git clone https://github.com/avdealex360/fin-home.git
 cd fin-home
-make setup          # .env + data/backups
-make up             # Docker → http://127.0.0.1:8000
+make install         # backend venv (uv) + frontend npm install
+make dev-api         # backend (FastAPI) → http://127.0.0.1:8000
+make dev-web         # frontend (Vite)   → http://127.0.0.1:5173   (во втором терминале)
 ```
 
-Логин и пароль — из `.env` (`APP_USER`, `APP_PASSWORD`).
+Откройте http://127.0.0.1:5173 — Vite проксирует `/api` на backend. При первом запуске БД пустая: экран онбординга предложит **загрузить пример** или **начать с чистого листа**.
 
-Без Docker: `make install && make dev`
+Через Docker: `make setup && make up` → http://127.0.0.1:8000 (backend отдаёт собранный SPA).
+
+---
+
+## Возможности
+
+- **Дашборд** — корзины 50/30/20 с целевыми процентами, остаток месяца, долги, советы, быстрая запись операции.
+- **Распределение дохода** — доход раскладывается по трём корзинам (Нужды / Желания / Сбережения) с адресатом «Вклад»; автозаполнение по плану, счётчик «распределено / цель».
+- **План** — лимиты по категориям, живой **50/30/20-метр**, кнопка **«Подогнать под 50/30/20»** (пропорционально), плановые крупные расходы и взносы по долгам, закрытие месяца.
+- **Вклад** — баланс (только растёт), пополнение, цель пополнения в месяц, калькулятор капитализации с графиком.
+- **Копилки** — конверты с целью и ежемесячным взносом: отложить / потратить (раздел «Ещё»).
+- **Аналитика** — блок **«Факт 50/30/20»** (факт vs идеал), план vs факт, топ категорий, накопительные графики.
+- **FAQ** — раздел «Как это работает»: наглядные сценарии использования.
+- **Настройки** — имена, курс EUR/RUB, долги, экспорт JSON/CSV.
+
+---
+
+## Стек
+
+Svelte 5 + Vite (PWA SPA) · Python 3.12 · FastAPI (JSON API) · SQLite · SQLAlchemy 2.x · Alembic · Chart.js · Docker · Caddy
+
+Аутентификация — HTTP Basic на уровне Caddy (в коде приложения авторизации нет).
 
 ---
 
@@ -26,8 +67,8 @@ make up             # Docker → http://127.0.0.1:8000
 
 | Документ | Описание |
 |----------|----------|
-| **[docs/README.md](docs/README.md)** | **Индекс:** с чего начать, чеклист, FAQ |
-| **[docs/PROJECT.md](docs/PROJECT.md)** | Архитектура, бизнес-процессы, интерфейс |
+| **[docs/README.md](docs/README.md)** | Индекс: с чего начать, чеклист, FAQ по эксплуатации |
+| **[docs/PROJECT.md](docs/PROJECT.md)** | Архитектура, модель данных, месячный цикл, разделы интерфейса |
 | **[docs/DEPLOY.md](docs/DEPLOY.md)** | VPS, GitHub Actions, HTTPS |
 | **[docs/MAKEFILE.md](docs/MAKEFILE.md)** | Все команды `make` |
 
@@ -35,35 +76,19 @@ make up             # Docker → http://127.0.0.1:8000
 
 ---
 
-## Возможности
-
-- **Дашборд** — 50/30/20, долги, цели, советы, быстрая запись операций
-- **План** — лимиты, плановые крупные расходы и взносы по долгам (любой месяц)
-- **Аналитика** — план vs факт, топ категорий, накопительный график
-- **Вклад** — калькулятор капитализации, график ставок
-- **Цели** — подушка, вклад, машина
-- **Настройки** — долги, категории, курсы EUR/RUB, экспорт
-- **Telegram** — `/add`, `/income`, `/balance` (опционально)
-
----
-
-## Стек
-
-Python 3.12 · FastAPI · SQLite · SQLAlchemy · Alembic · HTMX · Jinja2 · Tailwind · Docker · Caddy
-
----
-
 ## Команды
 
 | Задача | Команда |
 |--------|---------|
-| Локально | `make up` / `make down` / `make logs` |
-| Разработка | `make dev` |
-| Тесты | `make test` |
+| Установка (dev) | `make install` |
+| Backend (hot-reload) | `make dev-api` → `:8000` |
+| Frontend (Vite) | `make dev-web` → `:5173` |
+| Тесты backend | `make test` |
+| Docker (локально) | `make up` / `make down` / `make logs` |
 | Миграции | `make migrate` |
 | Бэкап | `make backup` |
-| **VPS prod** | `make prod-up` / `make prod-check` |
-| Деплой | `git push origin main` или `make deploy` на сервере |
+| **VPS prod** | `make prod-up` / `make prod-migrate` / `make prod-check` |
+| Деплой | `git push origin main` (GitHub Actions → VPS) |
 
 ---
 
@@ -74,51 +99,15 @@ Python 3.12 · FastAPI · SQLite · SQLAlchemy · Alembic · HTMX · Jinja2 · T
 make vps-setup
 
 # deploy
-make setup && nano .env
+make setup && nano .env          # APP_USER, APP_PASSWORD_HASH, APP_SECRET
 make prod-up && make prod-migrate && make prod-check
 ```
 
-HTTPS: self-signed сертификат (`make prod-certs`). Браузер покажет предупреждение — это нормально.
+HTTPS: self-signed сертификат (`make prod-certs`) — браузер покажет предупреждение, это нормально для IP без домена.
 
-**GitHub Actions** (автодеплой): нужны Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` — см. [docs/DEPLOY.md §4](docs/DEPLOY.md#шаг-4-секреты-github).
+**Автодеплой:** `git push origin main` → GitHub Actions (Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`) → на VPS `git pull` + `make prod-rebuild` + `make prod-migrate`.
 
-Подробно: **[docs/DEPLOY.md](docs/DEPLOY.md)** · **[docs/README.md](docs/README.md)**
-
----
-
-## Первые шаги в интерфейсе
-
-1. **План** — ожидаемый доход, крупные расходы, лимиты (можно на следующий месяц)
-2. **Настройки** — проверить долги и категории (предзаполнены)
-3. **Дашборд** — вносить операции через «Быструю запись»
-
-Подробный сценарий: **[docs/PROJECT.md §4](docs/PROJECT.md#4-ежемесячный-цикл-бизнес-процесс)**
-
----
-
-## Telegram (опционально)
-
-```env
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_ALLOWED_IDS=123456789
-```
-
-Webhook нужен домен с Let's Encrypt. Уведомления: `make notify`.
-
----
-
-## Бэкап
-
-```bash
-make backup          # локально
-make prod-backup     # на VPS
-```
-
-Cron на VPS:
-
-```
-0 3 * * * cd /opt/fin-home && make prod-backup >> /var/log/fin-home-backup.log 2>&1
-```
+Подробно: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ---
 
@@ -126,18 +115,25 @@ Cron на VPS:
 
 | Переменная | Описание |
 |------------|----------|
-| `APP_USER` | Логин Basic Auth |
-| `APP_PASSWORD` | Пароль |
+| `APP_USER` | Логин Basic Auth (Caddy) |
+| `APP_PASSWORD_HASH` | bcrypt-хэш пароля — `make hash-password p=пароль` |
 | `APP_SECRET` | Секрет приложения |
 | `DATABASE_URL` | `sqlite:///./data/budget.db` |
-| `TELEGRAM_BOT_TOKEN` | Токен бота (опционально) |
-| `TELEGRAM_ALLOWED_IDS` | ID пользователей Telegram |
 
-Пример: [`.env.example`](.env.example)
+Пример: [`.env.example`](.env.example).
 
 ---
 
-## Переезд на другой VPS
+## Данные и бэкап
+
+БД — `data/budget.db` на хосте (не в git, не в Docker-образе). Ничего не захардкожено и не является неудаляемым: при первом запуске БД пустая, онбординг предлагает демо-данные или чистый старт.
+
+```bash
+make backup          # локальный дамп SQLite
+make prod-backup     # на VPS (cron: 0 3 * * * cd /opt/fin-home && make prod-backup)
+```
+
+### Переезд на другой VPS
 
 ```bash
 tar -czf budget-backup.tar.gz data/ .env certs/
