@@ -13,11 +13,15 @@ make help
 
 ## Быстрый старт
 
-### Локально (Python)
+### Локально (Python + Vite, два терминала)
 
 ```bash
-make setup && make install && make dev    # http://127.0.0.1:8000
+make setup && make install
+make dev-api    # терминал 1 → http://127.0.0.1:8000
+make dev-web    # терминал 2 → http://127.0.0.1:5173
 ```
+
+`make dev` — алиас для `make dev-api` (только backend).
 
 ### Локально (Docker)
 
@@ -26,13 +30,18 @@ make setup && make up                     # http://127.0.0.1:8000
 make logs && make down
 ```
 
+Backend отдаёт собранный SPA; hot-reload frontend недоступен — для UI-разработки используйте `dev-web`.
+
 ### Production (VPS)
 
 ```bash
 make setup && nano .env
+make hash-password p=ваш-пароль           # → APP_PASSWORD_HASH в .env
 make prod-up                              # certs + Caddy + app
-make prod-migrate && make prod-check      # https://194.154.29.93
+make prod-check                           # https://194.154.29.93
 ```
+
+Миграции применяются автоматически при старте приложения. `make prod-migrate` — для ручного запуска.
 
 ---
 
@@ -43,12 +52,14 @@ make prod-migrate && make prod-check      # https://194.154.29.93
 | `make help` | Список всех команд |
 | **Инициализация** | |
 | `make setup` | `.env` из примера + `data/backups/` |
-| `make install` | `pip install -r requirements.txt` |
+| `make install` | Backend venv через `uv` + `npm install` в frontend |
+| `make hash-password p=…` | bcrypt-хэш пароля для Caddy Basic Auth |
 | **Локальная разработка** | |
-| `make dev` | Uvicorn hot-reload `:8000` |
-| `make test` | pytest (`pip install pytest`) |
+| `make dev-api` | Uvicorn hot-reload `:8000` |
+| `make dev-web` | Vite dev `:5173`, прокси `/api` → `:8000` |
+| `make dev` | Алиас для `dev-api` |
+| `make test` | pytest в backend |
 | `make migrate-local` | Alembic без Docker |
-| `make notify` | Telegram-уведомления |
 | **Docker (локально)** | |
 | `make up` | Поднять контейнеры |
 | `make down` | Остановить |
@@ -69,50 +80,62 @@ make prod-migrate && make prod-check      # https://194.154.29.93
 | `make prod-logs` | Логи prod |
 | `make prod-ps` | Статус контейнеров |
 | `make prod-shell` | Shell в budget-app |
-| `make prod-migrate` | Миграции |
+| `make prod-migrate` | Миграции вручную (обычно не нужны — auto на старте) |
 | `make prod-migrate-stamp` | Stamp head |
 | `make prod-check` | Диагностика HTTPS |
 | `make prod-caddy-reset` | Сброс Caddy + перезапуск |
 | `make prod-backup` | Бэкап на сервере |
 | **VPS** | |
-| `make deploy` | `scripts/deploy.sh` |
-| `make install-compose` | Docker Compose (root) |
+| `make deploy` | `scripts/deploy.sh` (git pull + rebuild + health check) |
+| `make install-compose` | Docker Compose plugin (root) |
 | `make vps-setup` | Первичная настройка VPS (root) |
 
 ---
 
 ## Типичные сценарии
 
-### Первый запуск локально
+### Первый запуск локально (UI-разработка)
 
 ```bash
-make setup
-# отредактировать .env
-make up
+make setup && make install
+make dev-api    # терминал 1
+make dev-web    # терминал 2
+open http://127.0.0.1:5173
+```
+
+### Первый запуск локально (Docker)
+
+```bash
+make setup && make up
 open http://127.0.0.1:8000
 ```
 
-### Обновление после git pull (локально)
+### Обновление после git pull (локально, Docker)
 
 ```bash
-make rebuild && make migrate
+make rebuild
+# миграции применятся при следующем старте контейнера; или:
+make migrate
 ```
 
 ### Первый запуск на VPS
 
 ```bash
 make vps-setup                    # root
-make setup && nano .env           # deploy
-make prod-up && make prod-migrate && make prod-check
+make setup && nano .env           # deploy: APP_USER, APP_PASSWORD_HASH, APP_SECRET
+make hash-password p=…            # сгенерировать хэш
+make prod-up && make prod-check
 ```
 
 ### Деплой новой версии
 
 **Предварительно:** GitHub Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` ([DEPLOY.md §4](DEPLOY.md#шаг-4-секреты-github))
 
-- Авто: `git push origin main` → проверить Actions
-- Вручную на VPS: `make deploy` или `make prod-rebuild && make prod-migrate`
-- Проверка: `make prod-check`
+- **Авто:** `git push origin main` → проверить Actions
+- **Вручную на VPS:** `make deploy` или `make prod-rebuild`
+- **Проверка:** `make prod-check`
+
+Скрипт `deploy.sh` выполняет `git fetch/reset`, `docker compose up -d --build` и `prod-check`. Отдельный `prod-migrate` не вызывается — миграции на старте приложения.
 
 ### HTTPS не работает на VPS
 
@@ -165,7 +188,6 @@ docker compose version
 
 ```bash
 VPS_IP=203.0.113.10 make prod-certs
-PYTHON=.venv/bin/python make dev
 ```
 
 ---
@@ -180,7 +202,6 @@ PYTHON=.venv/bin/python make dev
 | `make prod-certs` | `scripts/gen-certs.sh` |
 | `make vps-setup` | `scripts/vps-setup.sh` |
 | `make install-compose` | `scripts/install-compose.sh` |
-| `make notify` | `scripts/notify.py` |
 
 ---
 

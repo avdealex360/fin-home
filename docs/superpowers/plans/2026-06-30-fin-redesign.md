@@ -1,5 +1,7 @@
 # fin-home Radical Redesign — Implementation Plan
 
+> **Статус:** ✅ выполнен (v3). Актуальная документация: [PROJECT.md](../../PROJECT.md) · [README.md](../../../README.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Перестроить fin-home в ясную модель «двух потов» (расходуемые Копилки + замороженный Вклад), сделать сквозной флоу 50/30/20 видимым на всех экранах, переписать автораспределение и добавить раздел FAQ.

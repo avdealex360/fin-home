@@ -24,7 +24,7 @@ def user_dict(u: AppUser) -> dict:
 
 
 def category_dict(c: Category) -> dict:
-    icon = get_category_icon(c.name)
+    icon = get_category_icon(c.name, c.group)
     return {
         "id": c.id,
         "name": c.name,

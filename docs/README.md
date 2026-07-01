@@ -4,6 +4,8 @@
 
 **Production:** https://194.154.29.93
 
+> **v3:** Svelte 5 SPA + FastAPI JSON API. Интерфейс — одностраничное PWA-приложение с hash-роутингом (`#/plan`).
+
 ---
 
 ## Карта документов
@@ -21,11 +23,25 @@
 
 ### Я хочу пользоваться приложением
 
-1. Откройте https://194.154.29.93 (логин/пароль из `.env` на сервере).
+1. Откройте https://194.154.29.93 (логин из `.env` на сервере, пароль — тот, от которого сгенерирован `APP_PASSWORD_HASH`).
 2. Прочитайте [PROJECT.md §4](PROJECT.md#4-ежемесячный-цикл-бизнес-процесс) — ежемесячный цикл.
-3. Заполните **План** → вносите операции на **Дашборде**.
+3. Заполните **План** → вносите операции через **+** на главной.
 
 ### Я хочу запустить локально
+
+**UI-разработка (hot-reload):**
+
+```bash
+git clone https://github.com/avdealex360/fin-home.git
+cd fin-home
+make install
+make dev-api    # терминал 1
+make dev-web    # терминал 2
+```
+
+→ http://127.0.0.1:5173
+
+**Docker (как на prod, без hot-reload UI):**
 
 ```bash
 git clone https://github.com/avdealex360/fin-home.git
@@ -39,7 +55,7 @@ make setup && make up
 
 ### Я настраиваю VPS с нуля
 
-1. [DEPLOY.md §1–2](DEPLOY.md#шаг-1-подготовка-vps-один-раз) — `make vps-setup`, `.env`, `make prod-up`
+1. [DEPLOY.md §1–2](DEPLOY.md#шаг-1-подготовка-vps-один-раз) — `make vps-setup`, `.env`, `make hash-password`, `make prod-up`
 2. [DEPLOY.md §3–4](DEPLOY.md#шаг-3-ssh-ключ-для-github-actions) — SSH-ключ и GitHub Secrets
 3. [DEPLOY.md §5](DEPLOY.md#шаг-5-автодеплой) — проверка Actions
 
@@ -56,8 +72,8 @@ make setup && make up
 ## Чеклист production
 
 - [ ] VPS: `make vps-setup` (root)
-- [ ] `.env` с сильным `APP_PASSWORD` (deploy)
-- [ ] `make prod-up && make prod-migrate && make prod-check`
+- [ ] `.env`: `APP_USER`, `APP_PASSWORD_HASH` (через `make hash-password p=…`), `APP_SECRET` (deploy)
+- [ ] `make prod-up && make prod-check`
 - [ ] https://194.154.29.93 открывается (401 без логина = OK)
 - [ ] SSH-ключ deploy в `authorized_keys`
 - [ ] GitHub Secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
@@ -78,19 +94,25 @@ make setup && make up
 `make rebuild` — локальный compose без Caddy. Запустите `make prod-rebuild && make prod-check`.
 
 **Как спланировать следующий месяц?**  
-План → стрелки ← → или ссылка «Открыть следующий месяц».
+План → стрелки ← → для переключения месяца.
 
 **Где крупные расходы?**  
-Только в **Плане** (плановые расходы). Дашборд — для фактических мелких операций.
+Только в **Плане** (плановые расходы). FAB **+** — для фактических операций и распределения дохода.
 
-**Telegram не работает**  
-Webhook требует домен с Let's Encrypt. По IP с self-signed — только ручной `make notify` или локальный бот без webhook.
+**Чем копилка отличается от вклада?**  
+Копилка — можно тратить («Ещё» → Копилки). Вклад — только растёт, снять нельзя. Подробнее: `#/faq`.
+
+**Первый запуск — пустой экран?**  
+Онбординг предложит загрузить демо-данные или начать с чистого листа. БД изначально пустая.
 
 **Где данные?**  
 `/opt/fin-home/data/budget.db` на VPS. Не в git, не в Docker-образе.
 
 **Как сделать бэкап?**  
 `make prod-backup`. Файлы в `data/backups/budget_YYYYMMDD.sql`.
+
+**Нужен ли `make prod-migrate` после деплоя?**  
+Нет — миграции Alembic применяются автоматически при старте приложения. Команда остаётся для ручного запуска.
 
 ---
 
@@ -101,7 +123,9 @@ docs/
 ├── README.md      ← этот файл (индекс)
 ├── PROJECT.md     ← приложение и бизнес-процессы
 ├── DEPLOY.md      ← VPS и CI/CD
-└── MAKEFILE.md    ← команды make
+├── MAKEFILE.md    ← команды make
+├── plan.md        ← архив: исходный план разработки
+└── superpowers/   ← архив: спеки и планы редизайна v3
 ```
 
-Исходный план разработки (архив): [plan.md](../plan.md)
+Архив редизайна v3: [superpowers/specs/2026-06-30-fin-redesign-design.md](superpowers/specs/2026-06-30-fin-redesign-design.md)

@@ -1,5 +1,8 @@
 # ТЗ: Веб-приложение «Семейный бюджет»
- 
+
+> **Архив (v1, HTMX/Jinja2).** Актуальная документация: [PROJECT.md](PROJECT.md) · [README.md](../README.md).  
+> Реализовано как **v3**: Svelte 5 SPA + FastAPI JSON API. Спека редизайна: [superpowers/specs/2026-06-30-fin-redesign-design.md](superpowers/specs/2026-06-30-fin-redesign-design.md).
+
 **Версия:** 1.0  
 **Дата:** июнь 2026  
 **Среда:** VPS 1 vCPU / 1 GB RAM / 10 GB SSD, Docker, рядом с Amnesia VPN

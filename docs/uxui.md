@@ -1,6 +1,10 @@
 # UI/UX Design Spec — Семейный бюджет
+
+> **Архив (v1, HTMX/Jinja2).** Актуальный UI: `frontend/src/` (Svelte 5, dark theme, bottom nav).  
+> Документация: [PROJECT.md §5](PROJECT.md#5-разделы-интерфейса) · [uxui redesign spec](superpowers/specs/2026-06-30-fin-redesign-design.md).
+
 **Версия:** 1.0 · **Дата:** июнь 2026  
-**Стек:** FastAPI + Jinja2 + HTMX · **Целевое устройство:** мобильный телефон (primary), десктоп (secondary)
+**Стек (архив):** FastAPI + Jinja2 + HTMX · **Целевое устройство:** мобильный телефон (primary), десктоп (secondary)
  
 > **Как использовать этот документ.**  
 > Передай его Cursor целиком как контекст перед любой задачей по вёрстке.  

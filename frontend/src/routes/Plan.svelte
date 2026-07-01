@@ -96,12 +96,16 @@
   const groupLabel: Record<string, string> = { needs: 'Нужды', wants: 'Желания', savings: 'Сбережения' }
   const groupPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
 
+  function numFromInput(e: Event): number {
+    return parseFloat((e.target as HTMLInputElement).value) || 0
+  }
+
   // Live-derived allocated sums for needs/wants (editable on this screen)
   let needsAllocated = $derived(
-    categories.filter((c) => c.group === 'needs').reduce((s, c) => s + (limits[c.id] ?? 0), 0),
+    categories.filter((c) => c.group === 'needs').reduce((s, c) => s + Number(limits[c.id] ?? 0), 0),
   )
   let wantsAllocated = $derived(
-    categories.filter((c) => c.group === 'wants').reduce((s, c) => s + (limits[c.id] ?? 0), 0),
+    categories.filter((c) => c.group === 'wants').reduce((s, c) => s + Number(limits[c.id] ?? 0), 0),
   )
   // savings allocated comes from meter (includes funds + deposit target)
   let savingsAllocated = $derived(meter['savings']?.allocated ?? 0)
@@ -128,7 +132,13 @@
   <div class="page">
     <div class="card field">
       <label for="inc">Ожидаемый доход</label>
-      <input id="inc" class="input num" inputmode="numeric" bind:value={income} />
+      <input
+        id="inc"
+        class="input num"
+        inputmode="numeric"
+        value={income || ''}
+        oninput={(e) => (income = numFromInput(e))}
+      />
       <button class="btn btn-primary" onclick={recalc} disabled={saving}>
         <i class="ti ti-calculator"></i> Подогнать под 50/30/20
       </button>
@@ -158,7 +168,12 @@
             {#each cats as c}
               <div class="limit-row">
                 <span class="limit-name"><i class="ti {c.icon}" style="color:{c.color}"></i> {c.name}</span>
-                <input class="input num limit-input" inputmode="numeric" bind:value={limits[c.id]} />
+                <input
+                  class="input num limit-input"
+                  inputmode="numeric"
+                  value={limits[c.id] || ''}
+                  oninput={(e) => (limits[c.id] = numFromInput(e))}
+                />
               </div>
             {/each}
           {/if}
@@ -180,7 +195,13 @@
         {/each}
         <div class="add-row">
           <input class="input" placeholder="Описание" bind:value={newExp.description} />
-          <input class="input num add-amt" inputmode="numeric" placeholder="₽" bind:value={newExp.amount} />
+          <input
+            class="input num add-amt"
+            inputmode="numeric"
+            placeholder="₽"
+            value={newExp.amount || ''}
+            oninput={(e) => (newExp.amount = numFromInput(e))}
+          />
           <button class="btn-add" onclick={addExpense} aria-label="Добавить"><i class="ti ti-plus"></i></button>
         </div>
       </div>
@@ -203,7 +224,13 @@
               <option value={0}>Долг…</option>
               {#each debts as d}<option value={d.id}>{d.name}</option>{/each}
             </select>
-            <input class="input num add-amt" inputmode="numeric" placeholder="₽" bind:value={newDebt.amount} />
+            <input
+              class="input num add-amt"
+              inputmode="numeric"
+              placeholder="₽"
+              value={newDebt.amount || ''}
+              oninput={(e) => (newDebt.amount = numFromInput(e))}
+            />
             <button class="btn-add" onclick={addDebt} aria-label="Добавить"><i class="ti ti-plus"></i></button>
           </div>
         </div>
@@ -224,6 +251,7 @@
   .grp { font-size: var(--text-sm); color: var(--blue); font-weight: 600; margin-top: var(--space-2); }
   .limit-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
   .limit-name { font-size: var(--text-sm); display: flex; align-items: center; gap: 6px; }
+  .limit-name i { font-size: 18px; flex-shrink: 0; line-height: 1; }
   .limit-input { width: 110px; text-align: right; }
   .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
   .add-row .input { flex: 1; }

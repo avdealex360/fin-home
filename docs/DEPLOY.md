@@ -13,9 +13,13 @@
 ## Архитектура
 
 ```
-git push main → GitHub Actions → SSH → make deploy
+git push main → GitHub Actions → SSH → scripts/deploy.sh
                                               ↓
-                         docker compose (prod): Caddy + budget-app
+                         git fetch + reset --hard origin/main
+                                              ↓
+                         docker compose up -d --build (prod)
+                                              ↓
+                         budget-app стартует → Alembic upgrade (lifespan)
                                               ↓
                               Caddy :443 → budget-app :8000
                                               ↓
@@ -24,6 +28,8 @@ git push main → GitHub Actions → SSH → make deploy
 
 TLS: self-signed сертификат для IP (`scripts/gen-certs.sh` → `certs/`).  
 `tls internal` в Caddy **не использовать** — ломает handshake на IP.
+
+Basic Auth: Caddy читает `APP_USER` и `APP_PASSWORD_HASH` из `.env` (bcrypt-хэш).
 
 ---
 
@@ -65,19 +71,27 @@ make setup
 nano .env
 ```
 
+Сгенерировать bcrypt-хэш пароля (на любой машине с Docker):
+
+```bash
+make hash-password p=ваш_длинный_пароль
+```
+
+Пример `.env`:
+
 ```env
 APP_USER=admin
-APP_PASSWORD=ваш_длинный_пароль
+APP_PASSWORD_HASH=$2a$14$...   # вывод make hash-password
 APP_SECRET=случайная_строка_32_символа
+DATABASE_URL=sqlite:///./data/budget.db
 ```
 
 ```bash
-make prod-up          # gen-certs + Caddy + app
-make prod-migrate
+make prod-up          # gen-certs + Caddy + app (миграции — при старте)
 make prod-check       # все проверки OK
 ```
 
-Откройте **https://194.154.29.93** → примите предупреждение о сертификате → логин из `.env`.
+Откройте **https://194.154.29.93** → примите предупреждение о сертификате → логин `APP_USER` / пароль (тот, от которого делали хэш).
 
 Если миграции: `table app_users already exists` → `make prod-migrate-stamp`
 
@@ -151,6 +165,15 @@ ssh -i ~/.ssh/fin-home-deploy deploy@194.154.29.93 'echo OK'
 git push origin main
 ```
 
+GitHub Actions подключается по SSH и запускает `scripts/deploy.sh`:
+
+1. `git fetch origin main && git reset --hard origin/main`
+2. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+3. Ожидание готовности приложения
+4. `./scripts/prod-check.sh`
+
+Миграции Alembic выполняются при старте `budget-app` (не отдельным шагом).
+
 Проверка: GitHub → Actions → **Deploy**.
 
 На VPS:
@@ -191,7 +214,7 @@ sqlite3 /opt/fin-home/data/budget.db < /opt/fin-home/data/backups/budget_YYYYMMD
 |------|------------|
 | `scripts/gen-certs.sh` | Генерация self-signed для IP |
 | `certs/cert.pem`, `certs/key.pem` | Сертификат (не в git) |
-| `Caddyfile` | `:443` + `tls /certs/...` |
+| `Caddyfile` | `:443` + `tls /certs/...` + Basic Auth |
 
 Пересоздать сертификат:
 
@@ -217,14 +240,15 @@ make prod-check
 
 ```
 your-domain.com {
+    basic_auth {
+        {$APP_USER} {$APP_PASSWORD_HASH}
+    }
     reverse_proxy budget-app:8000
 }
 ```
 
 3. Убрать volume `./certs` из `docker-compose.prod.yml` (Caddy получит Let's Encrypt сам)
 4. `make prod-rebuild`
-
-Telegram webhook заработает с валидным HTTPS-доменом.
 
 ---
 
@@ -241,6 +265,7 @@ Telegram webhook заработает с валидным HTTPS-доменом.
 | `missing server host` (Actions) | Добавить Secret `VPS_HOST` = `194.154.29.93` |
 | SSH deploy падает | GitHub Secrets, `authorized_keys` |
 | prod-check FAIL на :443 | `make prod-caddy-reset`, проверить `certs/` |
+| 401 после логина | Проверить `APP_PASSWORD_HASH` (не plaintext-пароль) |
 
 Логи:
 
@@ -259,12 +284,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs caddy
 | `make prod-up` | Сертификат + Caddy + app |
 | `make prod-down` | Остановить |
 | `make prod-rebuild` | Пересобрать после git pull |
-| `make prod-migrate` | Миграции Alembic |
+| `make prod-migrate` | Миграции вручную (auto на старте — обычно не нужно) |
 | `make prod-migrate-stamp` | Исправить конфликт миграций |
 | `make prod-check` | Диагностика HTTPS |
 | `make prod-certs` | Только сертификат |
 | `make prod-caddy-reset` | Сброс кэша Caddy |
 | `make prod-backup` | Бэкап SQLite |
-| `make deploy` | git pull + rebuild + migrate |
+| `make hash-password p=…` | bcrypt-хэш для `.env` |
+| `make deploy` | git pull + rebuild + health check |
 
 Полный список: [MAKEFILE.md](MAKEFILE.md)

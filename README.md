@@ -85,9 +85,11 @@ Svelte 5 + Vite (PWA SPA) · Python 3.12 · FastAPI (JSON API) · SQLite · SQLA
 | Frontend (Vite) | `make dev-web` → `:5173` |
 | Тесты backend | `make test` |
 | Docker (локально) | `make up` / `make down` / `make logs` |
-| Миграции | `make migrate` |
+| Миграции (Docker) | `make migrate` |
+| Миграции (локально) | `make migrate-local` |
 | Бэкап | `make backup` |
-| **VPS prod** | `make prod-up` / `make prod-migrate` / `make prod-check` |
+| Хэш пароля (Caddy) | `make hash-password p=пароль` |
+| **VPS prod** | `make prod-up` / `make prod-check` |
 | Деплой | `git push origin main` (GitHub Actions → VPS) |
 
 ---
@@ -100,12 +102,13 @@ make vps-setup
 
 # deploy
 make setup && nano .env          # APP_USER, APP_PASSWORD_HASH, APP_SECRET
-make prod-up && make prod-migrate && make prod-check
+make hash-password p=ваш-пароль  # → вставить в APP_PASSWORD_HASH
+make prod-up && make prod-check
 ```
 
 HTTPS: self-signed сертификат (`make prod-certs`) — браузер покажет предупреждение, это нормально для IP без домена.
 
-**Автодеплой:** `git push origin main` → GitHub Actions (Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`) → на VPS `git pull` + `make prod-rebuild` + `make prod-migrate`.
+**Автодеплой:** `git push origin main` → GitHub Actions (Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`) → на VPS `scripts/deploy.sh` (`git fetch/reset` + `docker compose up -d --build` + health check). Миграции Alembic — автоматически при старте приложения.
 
 Подробно: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
