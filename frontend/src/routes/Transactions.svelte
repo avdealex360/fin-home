@@ -20,22 +20,27 @@
   let categoryFilter = $state<number | ''>('')
   let userFilter = $state<number | ''>('')
   let allTime = $state(true)
+  let dateFrom = $state('')
+  let dateTo = $state('')
   let sortBy = $state<'date' | 'amount'>('date')
   let sortDir = $state<'asc' | 'desc'>('desc')
+
+  // A custom date range takes precedence over the month/all-time toggle.
+  let usingDateRange = $derived(!!dateFrom || !!dateTo)
 
   let revealedId = $state<number | null>(null)
   let editingTx = $state<Transaction | null>(null)
 
   $effect(() => {
     void $dataVersion
-    void typeFilter; void categoryFilter; void userFilter; void allTime; void sortBy; void sortDir; void offset
+    void typeFilter; void categoryFilter; void userFilter; void allTime; void dateFrom; void dateTo; void sortBy; void sortDir; void offset
     void $period
     load()
   })
 
   $effect(() => {
     // Reset to the first page whenever a filter changes.
-    void typeFilter; void categoryFilter; void userFilter; void allTime; void sortBy; void sortDir; void $period
+    void typeFilter; void categoryFilter; void userFilter; void allTime; void dateFrom; void dateTo; void sortBy; void sortDir; void $period
     offset = 0
   })
 
@@ -48,9 +53,13 @@
 
   async function load() {
     const { year, month } = $period
+    // Date range wins; otherwise fall back to the month / all-time toggle.
+    const noMonth = allTime || usingDateRange
     const r = await api.transactionsList({
-      year: allTime ? undefined : year,
-      month: allTime ? undefined : month,
+      year: noMonth ? undefined : year,
+      month: noMonth ? undefined : month,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
       type: typeFilter || undefined,
       category_id: categoryFilter || undefined,
       user_id: userFilter || undefined,
@@ -62,6 +71,11 @@
     items = r.items
     total = r.total
     loaded = true
+  }
+
+  function clearDates() {
+    dateFrom = ''
+    dateTo = ''
   }
 
   function categoryIcon(t: Transaction) {
@@ -122,11 +136,25 @@
           <option value="">Все участники</option>
           {#each users as u}<option value={u.id}>{u.name}</option>{/each}
         </select>
-        <label class="check"><input type="checkbox" bind:checked={allTime} /> За всё время</label>
+        <label class="check"><input type="checkbox" bind:checked={allTime} disabled={usingDateRange} /> За всё время</label>
       </div>
     {:else}
-      <label class="check"><input type="checkbox" bind:checked={allTime} /> За всё время</label>
+      <label class="check"><input type="checkbox" bind:checked={allTime} disabled={usingDateRange} /> За всё время</label>
     {/if}
+
+    <div class="filter-row date-row">
+      <label class="date-field">
+        <span>С</span>
+        <input class="input" type="date" bind:value={dateFrom} max={dateTo || undefined} aria-label="Дата с" />
+      </label>
+      <label class="date-field">
+        <span>По</span>
+        <input class="input" type="date" bind:value={dateTo} min={dateFrom || undefined} aria-label="Дата по" />
+      </label>
+      {#if usingDateRange}
+        <button class="btn-ghost btn-sm clear-dates" onclick={clearDates} aria-label="Сбросить даты"><i class="ti ti-x"></i></button>
+      {/if}
+    </div>
     <div class="filter-row sort-row">
       <button class="btn-ghost btn-sm" class:active={sortBy === 'date'} onclick={() => toggleSort('date')}>
         Дата {sortBy === 'date' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
@@ -190,6 +218,10 @@
   .filters { gap: var(--space-2); }
   .filter-row { display: flex; gap: var(--space-2); }
   .filter-row .input { flex: 1; }
+  .date-row { align-items: flex-end; }
+  .date-field { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: var(--text-xs); color: var(--text-secondary); }
+  .date-field .input { width: 100%; }
+  .clear-dates { flex: 0 0 auto; align-self: stretch; }
   .sort-row button.active { color: var(--text-primary); }
   .check { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-secondary); white-space: nowrap; }
   .tx-wrap { display: flex; gap: var(--space-2); align-items: stretch; }

@@ -61,7 +61,7 @@
   <div class="page">
     {#if hasTrend}
       <div>
-        <div class="section-label">Динамика за 12 месяцев</div>
+        <div class="section-label">Динамика: 12 месяцев по {monthName($period.month)} {$period.year}</div>
         <div class="card">
           <Chart type="line" labels={trendLabels} datasets={trendDatasets} height={220} />
         </div>

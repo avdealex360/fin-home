@@ -89,9 +89,9 @@
     <div class="card stack">
       {#each summary.groups as g}
         <div>
-          <div class="row">
-            <span>{g.label}</span>
-            <span class="muted num">
+          <div class="row grp-row">
+            <span class="grp-label">{g.label}</span>
+            <span class="muted num grp-amt">
               {#if g.name === 'savings'}
                 <span class="aside-label">отложено</span>
               {/if}
@@ -190,4 +190,10 @@
   .tx-amt.income { color: var(--green); }
   .tx-del { background: var(--red-bg); color: var(--red); border: none; border-radius: var(--radius-md); width: 56px; }
   .aside-label { font-size: var(--text-xs); opacity: 0.7; margin-right: var(--space-1); }
+  /* Keep the 50/30/20 label + amounts on one line on narrow phones:
+     tighten the monospace digits and shrink the amount a touch. */
+  .grp-row { gap: var(--space-2); }
+  .grp-label { flex: 0 1 auto; min-width: 0; }
+  .grp-amt { flex: 0 0 auto; white-space: nowrap; text-align: right; font-size: var(--text-sm); letter-spacing: -0.03em; }
+  .grp-amt .aside-label { letter-spacing: 0; }
 </style>

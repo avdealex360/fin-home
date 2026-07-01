@@ -235,6 +235,16 @@
     scrollbar-width: none;
   }
   .cats::-webkit-scrollbar { display: none; }
+
+  /* On wider screens (tablet/PC) there's no touch-swipe, so a horizontal
+     scroll strip is awkward — wrap all category chips into a grid instead. */
+  @media (min-width: 640px) {
+    .cats {
+      flex-wrap: wrap;
+      overflow-x: visible;
+    }
+    .cat-chip { width: 84px; }
+  }
   .cat-chip {
     flex-shrink: 0;
     display: flex;

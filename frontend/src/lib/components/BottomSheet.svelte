@@ -55,7 +55,7 @@
   <div
     class="sheet"
     class:dragging
-    style="transform: translateY({dragY}px)"
+    style="--drag-y: {dragY}px"
     role="dialog"
     aria-modal="true"
     aria-label={title}
@@ -84,7 +84,7 @@
     right: 0;
     bottom: 0;
     z-index: 50;
-    max-width: 480px;
+    max-width: var(--shell-w);
     margin: 0 auto;
     background: var(--bg-elevated);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -92,8 +92,22 @@
     padding: var(--space-3) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
     max-height: 92dvh;
     overflow-y: auto;
+    transform: translateY(var(--drag-y, 0));
     animation: slideUp 0.25s ease;
     transition: transform 0.2s ease;
+  }
+  /* Desktop: present as a centred dialog rather than a bottom sheet.
+     Drag offset composes with the centring translate via the CSS var. */
+  @media (min-width: 640px) {
+    .sheet {
+      top: 50%;
+      bottom: auto;
+      max-width: 520px;
+      transform: translate(0, calc(-50% + var(--drag-y, 0)));
+      border-radius: var(--radius-xl);
+      max-height: 88dvh;
+      animation: fadeScale 0.2s ease;
+    }
   }
   .sheet.dragging {
     transition: none;
@@ -117,6 +131,7 @@
     margin: 0;
   }
   .sheet-body { display: flex; flex-direction: column; gap: var(--space-4); }
-  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(var(--drag-y, 0)); } }
+  @keyframes fadeScale { from { opacity: 0; } to { opacity: 1; } }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 </style>

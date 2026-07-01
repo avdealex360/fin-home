@@ -33,6 +33,8 @@ class TransactionBody(BaseModel):
 def list_transactions(
     year: int | None = None,
     month: int | None = None,
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
     type: str | None = None,
     category_id: int | None = None,
     user_id: int | None = None,
@@ -47,6 +49,10 @@ def list_transactions(
         q = q.filter(extract("year", Transaction.date) == year)
     if month:
         q = q.filter(extract("month", Transaction.date) == month)
+    if date_from:
+        q = q.filter(Transaction.date >= date_from)
+    if date_to:
+        q = q.filter(Transaction.date <= date_to)
     if type:
         q = q.filter(Transaction.type == type)
     if category_id:

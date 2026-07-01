@@ -85,10 +85,20 @@ class AnalyticsService:
         return results
 
     @staticmethod
-    def monthly_trends(db: Session, months: int = 12) -> list[MonthlyTrend]:
-        today = date.today()
+    def monthly_trends(
+        db: Session, months: int = 12, anchor: tuple[int, int] | None = None
+    ) -> list[MonthlyTrend]:
+        """`months` trailing months ending at `anchor` (defaults to current month).
+
+        Anchoring on the period selected in the UI means navigating between
+        months actually moves the trend window, so the chart reflects the view.
+        """
+        if anchor:
+            y, m = anchor
+        else:
+            today = date.today()
+            y, m = today.year, today.month
         trends = []
-        y, m = today.year, today.month
         for _ in range(months):
             income = (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
@@ -181,8 +191,10 @@ class AnalyticsService:
         return date(y, m, 1)
 
     @staticmethod
-    def cumulative_trends(db: Session, months: int = 12) -> list[dict]:
-        trends = AnalyticsService.monthly_trends(db, months)
+    def cumulative_trends(
+        db: Session, months: int = 12, anchor: tuple[int, int] | None = None
+    ) -> list[dict]:
+        trends = AnalyticsService.monthly_trends(db, months, anchor=anchor)
         cum_income = Decimal("0")
         cum_expense = Decimal("0")
         cum_savings = Decimal("0")

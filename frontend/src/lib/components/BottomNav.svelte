@@ -42,7 +42,7 @@
     right: 0;
     bottom: 0;
     z-index: 20;
-    max-width: 480px;
+    max-width: var(--shell-w);
     margin: 0 auto;
     height: calc(var(--nav-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);

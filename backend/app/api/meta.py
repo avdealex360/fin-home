@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import ym_params
 from app.db import get_db
-from app.models import AppUser, Category, Transaction
+from app.models import (
+    AppUser,
+    Category,
+    CategoryLimit,
+    IncomeAllocation,
+    PlannedExpense,
+    Transaction,
+)
 from app.seed import is_onboarded, load_clean_start, load_demo_data
 from app.serializers import category_dict, user_dict
 from app.services.dashboard import DashboardService
@@ -136,15 +143,34 @@ def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_d
 
 @router.delete("/categories/{cat_id}")
 def delete_category(cat_id: int, db: Session = Depends(get_db)):
-    """Hard-delete if unused, otherwise hide (keeps historical transactions intact)."""
+    """Hard-delete only when truly unused, otherwise hide.
+
+    A category can be referenced from several tables (transactions, income
+    allocations, plan limits, planned expenses). If any *historical* record
+    points to it we hide it to keep reports intact. Plan-only artifacts
+    (limits / planned expenses) are just configuration — we clean them up so
+    an unused category can still be removed instead of raising a FK error.
+    """
     c = db.query(Category).filter(Category.id == cat_id).first()
     if not c:
         return {"ok": True}
-    used = db.query(Transaction).filter(Transaction.category_id == cat_id).first()
-    if used:
+
+    has_history = (
+        db.query(Transaction.id).filter(Transaction.category_id == cat_id).first()
+        or db.query(IncomeAllocation.id).filter(IncomeAllocation.category_id == cat_id).first()
+    )
+    if has_history:
         c.is_hidden = True
         db.commit()
         return {"ok": True, "hidden": True}
+
+    # No historical data — drop plan-only references, then hard-delete.
+    db.query(CategoryLimit).filter(CategoryLimit.category_id == cat_id).delete(
+        synchronize_session=False
+    )
+    db.query(PlannedExpense).filter(PlannedExpense.category_id == cat_id).update(
+        {PlannedExpense.category_id: None}, synchronize_session=False
+    )
     db.delete(c)
     db.commit()
     return {"ok": True, "deleted": True}

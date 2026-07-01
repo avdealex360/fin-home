@@ -43,6 +43,8 @@ export interface TransactionListResponse {
 export interface TransactionListParams {
   year?: number
   month?: number
+  date_from?: string
+  date_to?: string
   type?: string
   category_id?: number
   user_id?: number
