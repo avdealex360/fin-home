@@ -111,36 +111,3 @@ def build_forecast(
         d = add_months(d, 1)
 
     return rows
-
-
-def required_monthly_contribution(
-    current_balance: Decimal,
-    annual_rate: Decimal,
-    target: Decimal,
-    target_date: date,
-    start_date: date | None = None,
-    rate_schedule: list[tuple[date, Decimal]] | None = None,
-    capitalization_day: int | None = None,
-) -> Decimal:
-    start = start_date or date.today()
-    if current_balance >= target:
-        return Decimal("0")
-
-    lo, hi = Decimal("0"), target
-    for _ in range(60):
-        mid = ((lo + hi) / 2).quantize(Decimal("0.01"))
-        rows = build_forecast(
-            start,
-            current_balance,
-            annual_rate,
-            target_date,
-            mid,
-            rate_schedule=rate_schedule,
-            capitalization_day=capitalization_day,
-        )
-        final = rows[-1].balance_after if rows else current_balance
-        if final >= target:
-            hi = mid
-        else:
-            lo = mid
-    return hi.quantize(Decimal("0.01"))

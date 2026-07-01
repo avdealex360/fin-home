@@ -223,7 +223,7 @@ class AnalyticsService:
         from decimal import Decimal
         from sqlalchemy import extract, func
         from app.models import Category, Transaction
-        from app.services.dashboard import _savings_set_aside
+        from app.services.dashboard import _savings_fund_contributions
 
         def expense_for(group: str) -> Decimal:
             return Decimal(str((
@@ -244,7 +244,7 @@ class AnalyticsService:
         ) or "0"))
 
         needs, wants = expense_for("needs"), expense_for("wants")
-        savings = _savings_set_aside(db, year, month)
+        savings = expense_for("savings") + _savings_fund_contributions(db, year, month)
         total = (needs + wants + savings) or Decimal("1")
         out = {}
         for name, fact, pct in (("needs", needs, 50), ("wants", wants, 30), ("savings", savings, 20)):

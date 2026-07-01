@@ -33,9 +33,7 @@
     }
     // Prefill from existing allocation
     for (const ex of v.existing) {
-      if (ex.to_deposit) {
-        next[keyOf('savings', 'deposit', 0)] = ex.amount
-      } else if (ex.fund_id) {
+      if (ex.fund_id) {
         // find which bucket this fund belongs to
         for (const b of v.buckets) {
           const found = b.items.find(it => it.kind === 'fund' && it.id === ex.fund_id)
@@ -87,7 +85,6 @@
         allocations.push({
           category_id: it.kind === 'category' ? it.id : null,
           fund_id: it.kind === 'fund' ? it.id : null,
-          to_deposit: it.kind === 'deposit',
           amount: amt,
           group: b.group,
         })
@@ -127,7 +124,6 @@
             <div class="alloc-row">
               <span class="alloc-name">
                 {#if it.kind === 'fund'}<i class="ti ti-pig-money"></i>{/if}
-                {#if it.kind === 'deposit'}<i class="ti ti-building-bank"></i>{/if}
                 {it.name}
               </span>
               <input

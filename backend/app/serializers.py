@@ -48,8 +48,6 @@ def transaction_dict(t: Transaction) -> dict:
         "user_id": t.user_id,
         "user_name": t.user.name if t.user else None,
         "comment": t.comment,
-        "base_amount_eur": float(t.base_amount_eur) if t.base_amount_eur is not None else None,
-        "exchange_rate": float(t.exchange_rate) if t.exchange_rate is not None else None,
         "is_fully_allocated": t.is_fully_allocated,
         "is_sinking_fund_spend": t.is_sinking_fund_spend,
         "fund_id": t.fund_id,

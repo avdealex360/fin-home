@@ -1,4 +1,4 @@
-"""App settings (names, currency rates), EUR rate fetch, data export."""
+"""App settings (currency), data export."""
 
 import csv
 import io
@@ -17,23 +17,18 @@ from app.serializers import (
     fund_dict,
     transaction_dict,
 )
-from app.services.exchange import update_eur_usd_rate
 from app.services.settings_store import get_setting, set_setting
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 class GeneralBody(BaseModel):
-    user1_name: str | None = None
-    user2_name: str | None = None
     currency: str | None = None
-    eur_usd_rate: str | None = None
-    eur_rub_rate: str | None = None
 
 
 @router.get("")
 def get_settings(db: Session = Depends(get_db)):
-    keys = ["user1_name", "user2_name", "currency", "eur_usd_rate", "eur_rub_rate", "onboarded"]
+    keys = ["currency", "onboarded"]
     return {k: get_setting(db, k, "") for k in keys}
 
 
@@ -42,12 +37,6 @@ def update_general(body: GeneralBody, db: Session = Depends(get_db)):
     for key, value in body.model_dump(exclude_none=True).items():
         set_setting(db, key, value)
     return {"ok": True}
-
-
-@router.post("/fetch-eur-rate")
-async def fetch_eur_rate(db: Session = Depends(get_db)):
-    rate = await update_eur_usd_rate(db)
-    return {"eur_usd_rate": str(rate) if rate is not None else None}
 
 
 @router.get("/export/json")

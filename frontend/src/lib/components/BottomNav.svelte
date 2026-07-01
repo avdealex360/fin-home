@@ -1,12 +1,23 @@
 <script lang="ts">
   import { route, navigate } from '../stores'
+
+  interface Props {
+    onadd: () => void
+  }
+  let { onadd }: Props = $props()
+
   const items = [
     { id: 'dashboard', label: 'Главная', icon: 'ti-home' },
     { id: 'plan', label: 'План', icon: 'ti-calendar' },
-    { id: 'deposit', label: 'Вклад', icon: 'ti-building-bank' },
+    { id: 'add', label: 'Добавить', icon: 'ti-plus' },
     { id: 'analytics', label: 'Аналитика', icon: 'ti-chart-bar' },
     { id: 'more', label: 'Ещё', icon: 'ti-dots' },
   ]
+
+  function click(id: string) {
+    if (id === 'add') onadd()
+    else navigate(id)
+  }
 </script>
 
 <nav class="bottom-nav">
@@ -14,8 +25,9 @@
     <button
       class="nav-item"
       class:active={$route === it.id}
+      class:accent={it.id === 'add'}
       aria-current={$route === it.id ? 'page' : undefined}
-      onclick={() => navigate(it.id)}
+      onclick={() => click(it.id)}
     >
       <i class="ti {it.icon}"></i>
       <span>{it.label}</span>
@@ -52,4 +64,5 @@
   }
   .nav-item i { font-size: 22px; }
   .nav-item.active { color: var(--blue); }
+  .nav-item.accent i { color: var(--blue); }
 </style>

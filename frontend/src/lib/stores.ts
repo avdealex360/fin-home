@@ -1,5 +1,8 @@
 import { writable } from 'svelte/store'
 
+// null = unknown yet (checking session), false = show login screen.
+export const authenticated = writable<boolean | null>(null)
+
 const now = new Date()
 export const period = writable<{ year: number; month: number }>({
   year: now.getFullYear(),

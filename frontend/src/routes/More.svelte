@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { api, type FundSummary, type DebtSummary } from '../lib/api'
-  import { dataVersion, invalidate, showToast } from '../lib/stores'
+  import { api, type FundSummary, type DebtSummary, type User } from '../lib/api'
+  import { authenticated, dataVersion, invalidate, showToast } from '../lib/stores'
   import { money } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
 
   let funds = $state<FundSummary[]>([])
   let debts = $state<DebtSummary[]>([])
-  let settings = $state<Record<string, string>>({})
+  let users = $state<User[]>([])
+  let newUserName = $state('')
+  let editingUserId = $state<number | null>(null)
+  let editingUserName = $state('')
 
   // Which item has its action panel open: `${kind}:${id}` and the mode.
   let openPanel = $state<string | null>(null)
@@ -22,9 +25,31 @@
     reload()
   })
   async function reload() {
-    ;[funds, debts, settings] = await Promise.all([
-      api.funds(), api.debts(), api.settings(),
+    ;[funds, debts, users] = await Promise.all([
+      api.funds(), api.debts(), api.users(),
     ])
+  }
+
+  async function addUser() {
+    if (!newUserName.trim()) return
+    await api.createUser(newUserName.trim())
+    newUserName = ''
+    invalidate()
+  }
+  function startEditUser(u: User) {
+    editingUserId = u.id
+    editingUserName = u.name
+  }
+  async function saveUserEdit() {
+    if (editingUserId == null || !editingUserName.trim()) return
+    await api.updateUser(editingUserId, editingUserName.trim())
+    editingUserId = null
+    invalidate()
+  }
+  async function removeUser(u: User) {
+    if (!confirm(`Удалить участника «${u.name}»?`)) return
+    await api.deleteUser(u.id)
+    invalidate()
   }
 
   function toggle(kind: string, id: number, mode: 'contribute' | 'spend' | 'edit', item?: any) {
@@ -75,9 +100,9 @@
   async function delFund(f: FundSummary) { if (confirm(`Удалить копилку «${f.name}»?`)) { await api.deleteFund(f.id); invalidate() } }
   async function delDebt(d: DebtSummary) { if (confirm(`Удалить долг «${d.name}»?`)) { await api.deleteDebt(d.id); invalidate() } }
 
-  async function saveNames() {
-    await api.saveSettings({ user1_name: settings.user1_name, user2_name: settings.user2_name, eur_rub_rate: settings.eur_rub_rate })
-    showToast('Сохранено')
+  async function logout() {
+    await api.logout()
+    authenticated.set(false)
   }
 
   const groupLabel = (g: 'wants' | 'savings') => g === 'wants' ? 'Желания' : 'Сбережения'
@@ -86,6 +111,7 @@
 <div class="page-header"><h1>Ещё</h1></div>
 
 <div class="page">
+  <a class="btn btn-ghost faq-btn" href="#/deposit"><i class="ti ti-building-bank"></i> Калькулятор вклада</a>
   <a class="btn btn-ghost faq-btn" href="#/faq"><i class="ti ti-help"></i> Как это работает</a>
 
   <!-- Funds -->
@@ -199,16 +225,38 @@
     </div>
   {/if}
 
+  <!-- Participants -->
+  <section>
+    <div class="section-label">Участники</div>
+    <div class="card stack">
+      {#each users as u}
+        <div class="row">
+          {#if editingUserId === u.id}
+            <input class="input" bind:value={editingUserName} />
+            <button class="btn-ghost btn-sm" onclick={saveUserEdit} aria-label="Сохранить имя"><i class="ti ti-check"></i></button>
+          {:else}
+            <span>{u.name}</span>
+            <span class="actions">
+              <button class="btn-ghost btn-sm" onclick={() => startEditUser(u)} aria-label="Переименовать"><i class="ti ti-pencil"></i></button>
+              <button class="btn-ghost btn-sm danger" onclick={() => removeUser(u)} aria-label="Удалить участника"><i class="ti ti-trash"></i></button>
+            </span>
+          {/if}
+        </div>
+      {/each}
+      <div class="add-row">
+        <input class="input" placeholder="Имя участника" bind:value={newUserName} />
+        <button class="btn-add" onclick={addUser} aria-label="Добавить"><i class="ti ti-plus"></i></button>
+      </div>
+    </div>
+  </section>
+
   <!-- Settings -->
   <section>
     <div class="section-label">Настройки</div>
     <div class="card stack">
-      <div class="field"><label for="u1">Имя 1</label><input id="u1" class="input" bind:value={settings.user1_name} /></div>
-      <div class="field"><label for="u2">Имя 2</label><input id="u2" class="input" bind:value={settings.user2_name} /></div>
-      <div class="field"><label for="er">Курс EUR/RUB</label><input id="er" class="input num" bind:value={settings.eur_rub_rate} /></div>
-      <button class="btn btn-secondary" onclick={saveNames}>Сохранить</button>
       <a class="btn btn-ghost" href="/api/settings/export/json">Экспорт JSON</a>
       <a class="btn btn-ghost" href="/api/settings/export/csv">Экспорт CSV</a>
+      <button class="btn btn-ghost danger" onclick={logout}>Выйти</button>
     </div>
   </section>
 </div>
@@ -217,6 +265,9 @@
   .faq-btn { display: flex; align-items: center; gap: var(--space-2); justify-content: center; border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 12px; }
   section { display: flex; flex-direction: column; gap: var(--space-2); }
   .actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+  .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
+  .add-row .input { flex: 1; }
+  .btn-add { background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); width: 44px; height: 44px; flex-shrink: 0; }
   .danger { color: var(--red); }
   .btn-ghost.btn { width: 100%; }
   .small { font-size: var(--text-xs); margin-top: 4px; }

@@ -10,7 +10,7 @@
   }
   let { onsubmitted }: Props = $props()
 
-  let type = $state<'expense' | 'income' | 'transfer'>('expense')
+  let type = $state<'expense' | 'income'>('expense')
   let amount = $state(0)
   let categoryId = $state<number | null>(null)
   let userId = $state<number | null>(null)
@@ -54,11 +54,12 @@
   // Categories for income type
   let incomeCategories = $derived(categories.filter((c) => c.group === 'income' && !c.is_hidden))
 
-  // Categories grouped for expense/transfer type
+  // Categories grouped for the expense form
   let needsCategories = $derived(categories.filter((c) => c.group === 'needs' && !c.is_hidden))
   let wantsCategories = $derived(categories.filter((c) => c.group === 'wants' && !c.is_hidden))
+  let savingsCategories = $derived(categories.filter((c) => c.group === 'savings' && !c.is_hidden))
 
-  // All visible non-income categories (for transfer type)
+  // All visible non-income categories
   let expenseCategories = $derived(
     categories.filter((c) => c.group !== 'income' && !c.is_hidden),
   )
@@ -76,16 +77,14 @@
   // Derive the group of the currently selected category
   let selectedCategory = $derived(categories.find((c) => c.id === categoryId) ?? null)
   let selectedGroup = $derived<GroupSummary | null>(
-    selectedCategory && (selectedCategory.group === 'needs' || selectedCategory.group === 'wants')
-      ? (groupMap[selectedCategory.group] ?? null)
-      : null,
+    selectedCategory ? (groupMap[selectedCategory.group] ?? null) : null,
   )
 
   // Labels for bucket headers
   const GROUP_LABELS: Record<string, string> = {
     needs: 'Нужды',
     wants: 'Желания',
-    savings: 'Накопления',
+    savings: 'Сбережения',
   }
 
   async function submit() {
@@ -113,7 +112,7 @@
 </script>
 
 <div class="type-tabs" role="tablist">
-  {#each [['expense', 'Расход'], ['income', 'Доход'], ['transfer', 'Перевод']] as [t, label]}
+  {#each [['expense', 'Расход'], ['income', 'Доход']] as [t, label]}
     <button
       role="tab"
       aria-selected={type === t}
@@ -129,8 +128,8 @@
 <MoneyInput bind:value={amount} />
 
 {#if type === 'expense'}
-  <!-- Grouped expense categories: Нужды then Желания -->
-  {#each [['needs', needsCategories], ['wants', wantsCategories]] as [group, cats]}
+  <!-- Grouped expense categories: Нужды, Желания, Сбережения -->
+  {#each [['needs', needsCategories], ['wants', wantsCategories], ['savings', savingsCategories]] as [group, cats]}
     {#if (cats as Category[]).length > 0}
       <div class="group-section">
         <span class="group-label">{GROUP_LABELS[group as string]}</span>
@@ -167,9 +166,9 @@
     </div>
   {/if}
 {:else}
-  <!-- Income: flat list of income categories; Transfer: flat list of expense categories -->
+  <!-- Income: flat list of income categories -->
   <div class="cats" role="listbox" aria-label="Категория">
-    {#each (type === 'income' ? incomeCategories : expenseCategories) as c (c.id)}
+    {#each incomeCategories as c (c.id)}
       <button
         role="option"
         aria-selected={categoryId === c.id}

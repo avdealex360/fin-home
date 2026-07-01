@@ -11,7 +11,6 @@ class TransactionCreate(BaseModel):
     category_id: int | None = None
     user_id: int | None = None
     comment: str | None = None
-    base_amount_eur: Decimal | None = None
 
 
 class TransactionUpdate(BaseModel):

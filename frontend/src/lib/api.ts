@@ -1,6 +1,8 @@
 // Typed client for the fin-home JSON API. Same-origin in prod (Caddy),
 // proxied to :8000 in dev (see vite.config.ts).
 
+import { authenticated } from './stores'
+
 export interface Category {
   id: number
   name: string
@@ -82,7 +84,6 @@ export interface MonthSummary {
   savings_target_rate: number
   unallocated: number
   is_fully_allocated: boolean
-  income_eur: number
   salary_last_month: number | null
   salary_diff: number | null
   groups: GroupSummary[]
@@ -91,23 +92,10 @@ export interface MonthSummary {
   has_plan: boolean
 }
 
-export interface Advice {
-  priority: number
-  message: string
-  category: string
-  tier: 'urgent' | 'attention' | 'info'
-}
-
-export interface AdviceTiers {
-  urgent: Advice[]
-  attention: Advice[]
-  info: Advice[]
-}
-
 export interface AllocationItem {
   id: number
   name: string
-  kind: 'category' | 'fund' | 'deposit'
+  kind: 'category' | 'fund'
   suggested_amount: number
   group: 'needs' | 'wants' | 'savings'
 }
@@ -124,11 +112,16 @@ export interface AllocationView {
   transaction: { id: number; amount: number; date: string; is_fully_allocated: boolean }
   unallocated: number
   buckets: AllocationBucket[]
-  existing: { category_id: number | null; fund_id: number | null; to_deposit: boolean; amount: number }[]
+  existing: { category_id: number | null; fund_id: number | null; amount: number }[]
 }
 
 export interface Deposit {
-  balance: number; rate: number; cap_day: number; start_date: string | null; monthly_target: number
+  rate: number
+  start_date: string | null
+  term_months: number
+  initial_lump: number
+  monthly_contribution: number
+  rate_schedule: string
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -138,6 +131,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     opts.body = JSON.stringify(body)
   }
   const res = await fetch(`/api${path}`, opts)
+  if (res.status === 401 && path !== '/auth/login') {
+    authenticated.set(false)
+    throw new Error('unauthorized')
+  }
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -153,11 +150,18 @@ const ym = (year?: number, month?: number) =>
   year && month ? `?year=${year}&month=${month}` : ''
 
 export const api = {
+  authMe: () => req<{ authenticated: boolean }>('GET', '/auth/me'),
+  login: (username: string, password: string) =>
+    req<{ ok: boolean }>('POST', '/auth/login', { username, password }),
+  logout: () => req('POST', '/auth/logout'),
+
   onboardingStatus: () => req<{ onboarded: boolean }>('GET', '/onboarding'),
   onboard: (mode: 'demo' | 'clean') => req('POST', '/onboarding', { mode }),
 
   users: () => req<User[]>('GET', '/users'),
   createUser: (name: string) => req<User>('POST', '/users', { name }),
+  updateUser: (id: number, name: string) => req<User>('PATCH', `/users/${id}`, { name }),
+  deleteUser: (id: number) => req('DELETE', `/users/${id}`),
 
   categories: (group?: string) =>
     req<Category[]>('GET', `/categories${group ? `?group=${group}` : ''}`),
@@ -167,8 +171,6 @@ export const api = {
 
   dashboard: (year?: number, month?: number) =>
     req<MonthSummary>('GET', `/dashboard${ym(year, month)}`),
-  advice: (year?: number, month?: number) =>
-    req<AdviceTiers>('GET', `/advice${ym(year, month)}`),
 
   transactions: (limit = 20, year?: number, month?: number) => {
     const p = new URLSearchParams({ limit: String(limit) })
@@ -216,10 +218,8 @@ export const api = {
 
   deposit: () => req<Deposit>('GET', '/deposit'),
   updateDeposit: (b: unknown) => req<Deposit>('POST', '/deposit', b),
-  depositContribute: (b: { amount: number; date?: string; note?: string }) =>
-    req<Deposit>('POST', '/deposit/contribute', b),
-  depositCalc: (monthly: number, targetDate: string) =>
-    req<any>('GET', `/deposit/calculator?monthly=${monthly}&target_date=${targetDate}`),
+  depositCalc: (monthly?: number) =>
+    req<any>('GET', `/deposit/calculator${monthly !== undefined ? `?monthly=${monthly}` : ''}`),
 
   planMeter: (y: number, m: number) =>
     req<Record<string, { allocated: number; target: number }>>('GET', `/plan/${y}/${m}/meter`),
@@ -228,5 +228,4 @@ export const api = {
 
   settings: () => req<Record<string, string>>('GET', '/settings'),
   saveSettings: (b: unknown) => req('POST', '/settings/general', b),
-  fetchEurRate: () => req<{ eur_usd_rate: string | null }>('POST', '/settings/fetch-eur-rate'),
 }

@@ -1,4 +1,4 @@
-"""Onboarding, lookups (users/categories) and the dashboard summary + advice."""
+"""Onboarding, lookups (users/categories) and the dashboard summary."""
 
 from decimal import Decimal
 
@@ -12,7 +12,6 @@ from app.models import AppUser, Category, Transaction
 from app.seed import is_onboarded, load_clean_start, load_demo_data
 from app.serializers import category_dict, user_dict
 from app.services.dashboard import DashboardService
-from app.services.rules import RuleEngine
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
@@ -154,9 +153,3 @@ def dashboard(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(ge
     year, month = ym
     summary = DashboardService.get_month_summary(db, year, month)
     return summary
-
-
-@router.get("/advice")
-def advice(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(get_db)):
-    year, month = ym
-    return RuleEngine().evaluate(db, year, month)

@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import (
     allocation,
     analytics,
+    auth,
     debts,
     deposit,
     funds,
@@ -17,7 +19,8 @@ from app.api import (
 )
 from app.db import SessionLocal
 from app.migrations import run_migrations
-from app.seed import ensure_settings
+from app.seed import ensure_common_user, ensure_savings_category, ensure_settings
+from app.services.auth import SESSION_COOKIE, is_valid_session
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -30,6 +33,8 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         ensure_settings(db)
+        ensure_savings_category(db)
+        ensure_common_user(db)
     finally:
         db.close()
     yield
@@ -52,7 +57,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_PUBLIC_API_PREFIXES = ("/api/auth", "/api/health", "/api/docs", "/api/openapi.json")
+
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api") and not path.startswith(_PUBLIC_API_PREFIXES):
+        if not is_valid_session(request.cookies.get(SESSION_COOKIE)):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
+
+
 for router in (
+    auth.router,
     meta.router,
     transactions.router,
     allocation.router,

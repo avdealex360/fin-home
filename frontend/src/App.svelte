@@ -1,13 +1,13 @@
 <script lang="ts">
   import { api, type Transaction } from './lib/api'
-  import { route, showToast, invalidate } from './lib/stores'
+  import { authenticated, route, showToast, invalidate } from './lib/stores'
   import BottomNav from './lib/components/BottomNav.svelte'
-  import Fab from './lib/components/Fab.svelte'
   import Toast from './lib/components/Toast.svelte'
   import BottomSheet from './lib/components/BottomSheet.svelte'
   import TxForm from './lib/components/TxForm.svelte'
   import AllocationSheet from './lib/components/AllocationSheet.svelte'
   import Onboarding from './lib/components/Onboarding.svelte'
+  import Login from './lib/components/Login.svelte'
 
   import Dashboard from './routes/Dashboard.svelte'
   import Plan from './routes/Plan.svelte'
@@ -19,7 +19,11 @@
   let onboarded = $state<boolean | null>(null)
 
   $effect(() => {
-    api.onboardingStatus().then((s) => (onboarded = s.onboarded))
+    api.authMe().then((s) => authenticated.set(s.authenticated))
+  })
+
+  $effect(() => {
+    if ($authenticated) api.onboardingStatus().then((s) => (onboarded = s.onboarded))
   })
 
   // Add-operation sheet state machine: closed -> form -> (income) allocate
@@ -50,7 +54,11 @@
   }
 </script>
 
-{#if onboarded === null}
+{#if $authenticated === null}
+  <div class="spinner-wrap">Загрузка…</div>
+{:else if !$authenticated}
+  <Login />
+{:else if onboarded === null}
   <div class="spinner-wrap">Загрузка…</div>
 {:else if !onboarded}
   <Onboarding ondone={() => (onboarded = true)} />
@@ -73,8 +81,7 @@
     {/if}
   </div>
 
-  <Fab onclick={openAdd} />
-  <BottomNav />
+  <BottomNav onadd={openAdd} />
 
   <BottomSheet
     open={sheet === 'form'}

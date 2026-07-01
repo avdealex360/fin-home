@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type MonthSummary, type AdviceTiers, type Transaction } from '../lib/api'
+  import { api, type MonthSummary, type Transaction } from '../lib/api'
   import { period, dataVersion, showToast, invalidate } from '../lib/stores'
   import { money, monthName, formatDate } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
@@ -10,8 +10,8 @@
   let { onAllocate }: Props = $props()
 
   let summary = $state<MonthSummary | null>(null)
-  let advice = $state<AdviceTiers | null>(null)
   let recent = $state<Transaction[]>([])
+  let plannedExpenses = $state<any[]>([])
   let revealed = $state<number | null>(null)
 
   $effect(() => {
@@ -22,19 +22,15 @@
   })
 
   async function load(year: number, month: number) {
-    const [s, a, r] = await Promise.all([
+    const [s, r, p] = await Promise.all([
       api.dashboard(year, month),
-      api.advice(year, month),
       api.transactions(10, year, month),
+      api.plan(year, month),
     ])
     summary = s
-    advice = a
     recent = r
+    plannedExpenses = p.planned_expenses
   }
-
-  let topAdvice = $derived(
-    advice ? [...advice.urgent, ...advice.attention, ...advice.info].slice(0, 2) : [],
-  )
 
   let pendingIncome = $derived(recent.find((t) => t.type === 'income' && !t.is_fully_allocated))
 
@@ -55,8 +51,6 @@
       invalidate()
     })
   }
-
-  const tierClass = (t: string) => (t === 'urgent' ? 'red' : t === 'attention' ? 'yellow' : 'blue')
 
   const nominalPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
   const groupLabel = (key: string, label: string) =>
@@ -79,9 +73,6 @@
         <span class="chip {summary.savings_rate >= summary.savings_target_rate ? 'green' : 'yellow'}">
           Сбережения {summary.savings_rate.toFixed(0)}%
         </span>
-        {#if summary.income_eur > 0}
-          <span class="chip blue">€ {money(summary.income_eur)}</span>
-        {/if}
       </div>
     </div>
 
@@ -136,15 +127,18 @@
       </div>
     {/if}
 
-    <!-- Advice -->
-    {#if topAdvice.length}
-      <div class="stack">
-        {#each topAdvice as a}
-          <div class="advice {tierClass(a.tier)}">
-            <i class="ti ti-bulb"></i>
-            <span>{a.message}</span>
-          </div>
-        {/each}
+    <!-- Planned big expenses -->
+    {#if plannedExpenses.length}
+      <div>
+        <div class="section-label">Ожидаемые крупные расходы</div>
+        <div class="card stack">
+          {#each plannedExpenses as e}
+            <div class="row">
+              <span>{e.description}{#if e.expected_date}<span class="muted small-inline"> · {formatDate(e.expected_date)}</span>{/if}</span>
+              <span class="num">{money(e.amount)} ₽</span>
+            </div>
+          {/each}
+        </div>
       </div>
     {/if}
 
@@ -185,10 +179,7 @@
   .unalloc-amt { font-size: var(--text-xl); }
   .debt.priority { border-left: 3px solid var(--red); }
   .small { font-size: var(--text-xs); margin: 4px 0 8px; }
-  .advice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); }
-  .advice.red { background: var(--red-bg); color: var(--red); }
-  .advice.yellow { background: var(--yellow-bg); color: var(--yellow); }
-  .advice.blue { background: var(--blue-bg); color: var(--blue); }
+  .small-inline { font-size: var(--text-xs); }
   .tx-wrap { display: flex; gap: var(--space-2); align-items: stretch; }
   .tx { flex: 1; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 0; background: var(--bg-surface); border: none; border-radius: var(--radius-md); padding: var(--space-3); text-align: left; }
   .tx-cat { font-size: var(--text-base); }

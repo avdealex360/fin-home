@@ -39,19 +39,21 @@ def test_unallocated_zero_after_allocate(db):
     buckets = get_allocation_buckets(db, date.today().year, date.today().month, tx.amount)
     allocations = []
     assigned = Decimal("0")
+    savings_cat_id = next(
+        item.id for b in buckets if b.group == "savings" for item in b.items if item.kind == "category"
+    )
     for b in buckets:
         for item in b.items:
             if item.suggested_amount > 0:
                 allocations.append(AllocationInput(
                     category_id=item.id if item.kind == "category" else None,
                     fund_id=item.id if item.kind == "fund" else None,
-                    to_deposit=item.kind == "deposit",
                     amount=item.suggested_amount, group=item.group))
                 assigned += item.suggested_amount
-    # top up remainder to the deposit so the income is fully allocated
+    # top up remainder into the savings category so the income is fully allocated
     remainder = tx.amount - assigned
     if remainder > 0:
-        allocations.append(AllocationInput(to_deposit=True, amount=remainder, group="savings"))
+        allocations.append(AllocationInput(category_id=savings_cat_id, amount=remainder, group="savings"))
     allocate_income(db, tx.id, allocations)
     db.refresh(tx)
     assert tx.is_fully_allocated
@@ -67,7 +69,7 @@ def test_allocation_three_buckets(db):
     groups = [b.group for b in buckets]
     assert groups == ["needs", "wants", "savings"]
     savings = next(b for b in buckets if b.group == "savings")
-    assert any(item.kind == "deposit" for item in savings.items)
+    assert any(item.kind == "category" for item in savings.items)
 
 
 def test_sinking_fund_contribute_and_spend(db):

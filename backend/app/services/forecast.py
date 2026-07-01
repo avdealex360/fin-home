@@ -23,14 +23,6 @@ class ForecastMonth:
     events: list[str] = field(default_factory=list)
 
 
-@dataclass
-class CascadeScenario:
-    debt_name: str
-    freed_monthly: Decimal
-    suggestion: str
-    months_to_close_target: int | None
-
-
 class ForecastService:
     @staticmethod
     def cash_flow_forecast(db: Session, months_ahead: int = 3) -> list[ForecastMonth]:
@@ -115,43 +107,3 @@ class ForecastService:
             year, month = _shift_month(year, month, 1)
 
         return results
-
-    @staticmethod
-    def cascade_after_debt_close(db: Session) -> list[CascadeScenario]:
-        scenarios: list[CascadeScenario] = []
-        # The "split" being repaid: an active debt with a payment plan that frees
-        # up cash once closed. The target: the highest-interest active debt.
-        active = [d for d in db.query(Debt).filter(Debt.is_closed.is_(False)).all()]
-        split = next(
-            (d for d in active if d.type == "split" and d.monthly_payment > 0),
-            None,
-        )
-        credit = max(
-            (d for d in active if d.interest_rate and d.interest_rate > 0),
-            key=lambda d: d.interest_rate,
-            default=None,
-        )
-
-        if split and not split.is_closed and split.monthly_payment > 0:
-            freed = split.monthly_payment
-            months = None
-            if credit and not credit.is_closed and credit.remaining > 0:
-                months = int(
-                    (credit.remaining / freed).to_integral_value()
-                    if freed > 0
-                    else 0
-                )
-            scenarios.append(
-                CascadeScenario(
-                    debt_name=split.name,
-                    freed_monthly=freed,
-                    suggestion=(
-                        f"Направить {freed:,.0f} ₽/мес на досрочное погашение кредитки?".replace(",", " ")
-                        if credit and not credit.is_closed
-                        else f"После закрытия Сплита высвободится {freed:,.0f} ₽/мес".replace(",", " ")
-                    ),
-                    months_to_close_target=months,
-                )
-            )
-
-        return scenarios

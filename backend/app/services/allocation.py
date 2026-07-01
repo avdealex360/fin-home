@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, CategoryLimit, IncomeAllocation, MonthlyPlan, SinkingFund, Transaction
 from app.seed import GROUP_PERCENTS
-from app.services.deposit import DepositService
 
 BUCKETS = [("needs", "Нужды", 50), ("wants", "Желания", 30), ("savings", "Сбережения", 20)]
 
@@ -109,7 +108,7 @@ def get_allocation_buckets(
         target = (income_amount * Decimal(percent) / Decimal("100")).quantize(Decimal("0.01"))
         bucket = AllocationBucket(group=group, label=label, percent=percent, target_amount=target)
 
-        if group in ("needs", "wants"):
+        if group in ("needs", "wants", "savings"):
             cats = (
                 db.query(Category)
                 .filter(Category.is_hidden.is_(False), Category.group == group)
@@ -144,16 +143,6 @@ def get_allocation_buckets(
                 )
             )
 
-        if group == "savings":
-            bucket.items.append(
-                AllocationItem(
-                    id=0,
-                    name="Вклад",
-                    kind="deposit",
-                    suggested_amount=DepositService.get_monthly_target(db),
-                    group="savings",
-                )
-            )
         out.append(bucket)
     return out
 
@@ -162,7 +151,6 @@ def get_allocation_buckets(
 class AllocationInput:
     category_id: int | None = None
     fund_id: int | None = None
-    to_deposit: bool = False
     amount: Decimal = Decimal("0")
     group: str = "needs"
 
@@ -182,8 +170,6 @@ def allocate_income(
             f = db.query(SinkingFund).filter(SinkingFund.id == o.fund_id).first()
             if f:
                 f.current_amount = max(Decimal("0"), f.current_amount - o.amount)
-    # reverse any prior deposit contributions made from this income (handles re-allocation)
-    DepositService.rollback_for_income(db, income_tx_id)
     db.query(IncomeAllocation).filter(IncomeAllocation.income_tx_id == income_tx_id).delete()
 
     total = Decimal("0")
@@ -195,7 +181,6 @@ def allocate_income(
                 income_tx_id=income_tx_id,
                 category_id=a.category_id,
                 fund_id=a.fund_id,
-                to_deposit=a.to_deposit,
                 amount=a.amount,
                 allocated_at=datetime.utcnow(),
                 allocation_level=0,
@@ -206,8 +191,6 @@ def allocate_income(
             f = db.query(SinkingFund).filter(SinkingFund.id == a.fund_id).first()
             if f:
                 f.current_amount += a.amount
-        if a.to_deposit:
-            DepositService.contribute(db, a.amount, source="allocation", income_tx_id=income_tx_id)
 
     tx.is_fully_allocated = abs(total - tx.amount) <= Decimal("0.01")
     db.commit()

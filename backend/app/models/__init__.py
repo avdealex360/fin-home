@@ -73,7 +73,6 @@ class IncomeAllocation(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     allocated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     allocation_level: Mapped[int] = mapped_column(Integer, nullable=False)
-    to_deposit: Mapped[bool] = mapped_column(Boolean, default=False)
 
     income_tx: Mapped["Transaction"] = relationship(back_populates="allocations")
     category: Mapped["Category | None"] = relationship()
@@ -90,8 +89,6 @@ class Transaction(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("app_users.id"), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    base_amount_eur: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    exchange_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     is_fully_allocated: Mapped[bool] = mapped_column(Boolean, default=False)
     is_sinking_fund_spend: Mapped[bool] = mapped_column(Boolean, default=False)
     fund_id: Mapped[int | None] = mapped_column(ForeignKey("sinking_funds.id"), nullable=True)
@@ -208,22 +205,3 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class DepositSnapshot(Base):
-    __tablename__ = "deposit_snapshots"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    date: Mapped[date] = mapped_column(Date, nullable=False)
-    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class DepositContribution(Base):
-    __tablename__ = "deposit_contributions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    date: Mapped[date] = mapped_column(Date, nullable=False)
-    source: Mapped[str] = mapped_column(String(20), default="manual")  # manual | allocation
-    income_tx_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"), nullable=True)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)

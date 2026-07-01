@@ -19,7 +19,6 @@ router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 class SavePlanBody(BaseModel):
     expected_income: Decimal
-    auto_distribute: bool = True
 
 
 class LimitsBody(BaseModel):
@@ -57,14 +56,7 @@ def save_plan(
     db: Session = Depends(get_db),
 ):
     year, month = ym
-    if body.auto_distribute and body.expected_income > 0:
-        # Save income first, then proportionally fit limits via fit_503020
-        PlanService.save_plan(db, year, month, body.expected_income, auto_distribute=False)
-        plan = PlanService.fit_503020(db, year, month)
-    else:
-        plan = PlanService.save_plan(
-            db, year, month, body.expected_income, auto_distribute=False
-        )
+    plan = PlanService.save_plan(db, year, month, body.expected_income)
     return plan_dict(plan)
 
 
@@ -76,9 +68,7 @@ def save_limits(
 ):
     year, month = ym
     plan = PlanService.get_or_create_plan(db, year, month)
-    PlanService.save_plan(
-        db, year, month, plan.expected_income, category_limits=body.limits, auto_distribute=False
-    )
+    PlanService.save_plan(db, year, month, plan.expected_income, category_limits=body.limits)
     db.refresh(plan)
     return plan_dict(plan)
 

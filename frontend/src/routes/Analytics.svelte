@@ -111,17 +111,6 @@
       </div>
     </div>
 
-    {#if data.cascade?.length}
-      <div>
-        <div class="section-label">Сценарии</div>
-        <div class="card stack">
-          {#each data.cascade as s}
-            <p class="muted">{s.suggestion}</p>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
     {#if data.pair?.users?.length > 1}
       <div>
         <div class="section-label">Кто сколько тратит</div>

@@ -50,13 +50,15 @@
     period.set({ year: y, month: m })
   }
 
-  async function recalc() {
+  async function saveIncome() {
+    if (income === plan.expected_income) return
     saving = true
-    await api.savePlan({ expected_income: income, auto_distribute: true }, $period.year, $period.month)
+    await api.savePlan({ expected_income: income }, $period.year, $period.month)
     saving = false
+    plan.expected_income = income
     invalidate()
     await loadMeter()
-    showToast('План пересчитан по 50/30/20')
+    showToast('Доход сохранён')
   }
 
   async function saveLimits() {
@@ -138,10 +140,9 @@
         inputmode="numeric"
         value={income || ''}
         oninput={(e) => (income = numFromInput(e))}
+        onblur={saveIncome}
+        disabled={saving}
       />
-      <button class="btn btn-primary" onclick={recalc} disabled={saving}>
-        <i class="ti ti-calculator"></i> Подогнать под 50/30/20
-      </button>
     </div>
 
     <div class="card stack meter-card">

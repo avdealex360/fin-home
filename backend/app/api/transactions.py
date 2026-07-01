@@ -25,8 +25,6 @@ class TransactionBody(BaseModel):
     category_id: int | None = None
     user_id: int | None = None
     comment: str | None = None
-    base_amount_eur: Decimal | None = None
-    exchange_rate: Decimal | None = None
 
 
 @router.get("")
@@ -54,8 +52,6 @@ def create_transaction(body: TransactionBody, db: Session = Depends(get_db)):
         category_id=body.category_id,
         user_id=body.user_id,
         comment=body.comment,
-        base_amount_eur=body.base_amount_eur,
-        exchange_rate=body.exchange_rate,
     )
     db.add(tx)
     db.flush()
@@ -79,8 +75,6 @@ def update_transaction(tx_id: int, body: TransactionBody, db: Session = Depends(
     tx.category_id = body.category_id
     tx.user_id = body.user_id
     tx.comment = body.comment
-    tx.base_amount_eur = body.base_amount_eur
-    tx.exchange_rate = body.exchange_rate
     db.commit()
     db.refresh(tx)
     return transaction_dict(tx)

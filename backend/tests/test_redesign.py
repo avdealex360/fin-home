@@ -9,6 +9,13 @@ import app.models  # noqa: F401 — registers models with Base.metadata before c
 from app.db import Base
 
 
+def _authenticate(client) -> None:
+    """Inject a valid session cookie so TestClient calls pass the auth middleware."""
+    from app.services.auth import SESSION_COOKIE, create_session_token
+
+    client.cookies.set(SESSION_COOKIE, create_session_token())
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite:///:memory:")
@@ -33,28 +40,22 @@ def test_model_shape(db):
     assert fund.group == "savings"
     assert not hasattr(fund, "category_group")
 
-    # DepositContribution exists
-    c = m.DepositContribution(amount=Decimal("1000"), date=date.today(), source="manual")
-    db.add(c)
-    db.commit()
-    assert c.id is not None
-
-    # IncomeAllocation has to_deposit
-    a = m.IncomeAllocation(income_tx_id=1, amount=Decimal("5"), allocation_level=4, to_deposit=True)
-    assert a.to_deposit is True
+    # IncomeAllocation no longer has to_deposit — deposit is a standalone calculator
+    a = m.IncomeAllocation(income_tx_id=1, amount=Decimal("5"), allocation_level=4)
+    assert not hasattr(a, "to_deposit")
 
 
 from app.seed import load_demo_data, ensure_settings
 from app.models import Category, SinkingFund, Setting
 
 
-def test_seed_no_savings_categories_no_goals(db):
+def test_seed_has_savings_category_no_goals(db):
     ensure_settings(db)
     load_demo_data(db)
 
     groups = {c.group for c in db.query(Category).all()}
-    assert "savings" not in groups
-    assert groups <= {"needs", "wants", "income"}
+    assert "savings" in groups, "a savings category must exist so limits/spend can be tracked like needs/wants"
+    assert groups <= {"needs", "wants", "savings", "income"}
 
     funds = db.query(SinkingFund).all()
     assert funds, "demo should create копилки"
@@ -62,19 +63,6 @@ def test_seed_no_savings_categories_no_goals(db):
     assert any(f.group == "savings" for f in funds)
 
     assert db.query(Setting).filter(Setting.key == "deposit_monthly_target").first() is not None
-
-
-from app.services.deposit import DepositService
-from app.models import DepositContribution
-
-
-def test_deposit_contribute_grows_balance(db):
-    ensure_settings(db)
-    start = DepositService.get_balance(db)
-    new_balance = DepositService.contribute(db, Decimal("10000"), source="manual")
-    assert new_balance == start + Decimal("10000")
-    assert DepositService.get_balance(db) == start + Decimal("10000")
-    assert db.query(DepositContribution).count() == 1
 
 
 from app.models import Transaction, MonthlyPlan
@@ -94,20 +82,21 @@ def test_buckets_mirror_503020(db):
     assert by["needs"].percent == 50 and by["needs"].target_amount == Decimal("50000")
     assert by["wants"].percent == 30
     assert by["savings"].percent == 20
-    # savings bucket includes the Вклад destination
-    assert any(i.kind == "deposit" for i in by["savings"].items)
+    # savings bucket now offers its category (e.g. «Пополнение вклада») like needs/wants,
+    # not a special "deposit" destination — deposit is a standalone calculator now.
+    assert any(i.kind == "category" for i in by["savings"].items)
+    assert not any(i.kind == "deposit" for i in by["savings"].items)
 
 
-def test_allocate_to_deposit_grows_deposit(db):
+def test_allocate_to_savings_category(db):
     ensure_settings(db); load_demo_data(db)
-    from app.services.deposit import DepositService
+    savings_cat = db.query(Category).filter(Category.group == "savings").first()
+    assert savings_cat, "demo data must seed a savings category"
     tx = Transaction(type="income", amount=Decimal("20000"), date=date.today())
     db.add(tx); db.commit()
-    before = DepositService.get_balance(db)
-    allocate_income(db, tx.id, [AllocationInput(to_deposit=True, amount=Decimal("20000"), group="savings")])
+    allocate_income(db, tx.id, [AllocationInput(category_id=savings_cat.id, amount=Decimal("20000"), group="savings")])
     db.refresh(tx)
     assert tx.is_fully_allocated
-    assert DepositService.get_balance(db) == before + Decimal("20000")
     assert get_unallocated_for_tx(db, tx) == Decimal("0")
 
 
@@ -123,19 +112,47 @@ def test_fund_create_and_spend_with_group(db):
     assert tx.is_sinking_fund_spend and tx.fund_id == f.id
 
 
-def test_dashboard_savings_counts_deposit(db):
+def test_dashboard_savings_counts_fund_contributions(db):
+    """Savings.spent must count копилка contributions — the вклад calculator has
+    no ledger at all anymore, so it structurally cannot move this number."""
     ensure_settings(db); load_demo_data(db)
-    from app.services.deposit import DepositService
     from app.services.dashboard import DashboardService
+    from app.services.sinking_funds import SinkingFundService
+
     y, mth = date.today().year, date.today().month
     db.add(Transaction(type="income", amount=Decimal("100000"), date=date.today())); db.commit()
-    DepositService.contribute(db, Decimal("15000"), source="manual")
+
+    fund = db.query(SinkingFund).filter(SinkingFund.group == "savings").first()
+    assert fund, "demo data must include a savings копилка"
+    SinkingFundService.contribute(db, fund.id, Decimal("5000"), date.today())
 
     s = DashboardService.get_month_summary(db, y, mth)
     sav = next(g for g in s.groups if g.name == "savings")
-    assert sav.spent >= Decimal("15000")
+    assert sav.spent == Decimal("5000")
     assert {g.name for g in s.groups} == {"needs", "wants", "savings"}
     assert not hasattr(s, "goals") or s.goals == []
+
+
+def test_savings_category_limit_shows_up_in_group_limit(db):
+    """A CategoryLimit on a savings-group category must reach Dashboard's group.limit,
+    exactly like needs/wants — this was the bug: savings limits were entered but ignored."""
+    ensure_settings(db); load_demo_data(db)
+    from app.services.dashboard import DashboardService
+    from app.services.plan import PlanService
+
+    y, mth = date.today().year, date.today().month
+    cat = db.query(Category).filter(Category.group == "savings").first()
+    assert cat, "demo data must seed a savings category"
+
+    plan = PlanService.get_or_create_plan(db, y, mth)
+    PlanService.save_plan(db, y, mth, Decimal("100000"), category_limits={cat.id: Decimal("20000")})
+
+    s = DashboardService.get_month_summary(db, y, mth)
+    sav = next(g for g in s.groups if g.name == "savings")
+    assert sav.limit == Decimal("20000")
+
+    meter = PlanService.meter_503020(db, y, mth)
+    assert meter["savings"]["allocated"] == 20000.0
 
 
 def test_analytics_has_503020_split(db):
@@ -147,68 +164,15 @@ def test_analytics_has_503020_split(db):
     assert set(data["needs"].keys()) == {"fact", "ideal", "percent"}
 
 
-def test_plan_meter_and_fit(db):
+def test_plan_meter_needs_target(db):
     ensure_settings(db); load_demo_data(db)
     from app.services.plan import PlanService
     y, mth = date.today().year, date.today().month
     plan = PlanService.get_or_create_plan(db, y, mth)
     plan.expected_income = Decimal("100000"); db.commit()
 
-    PlanService.fit_503020(db, y, mth)
     meter = PlanService.meter_503020(db, y, mth)
     assert abs(meter["needs"]["target"] - 50000) < 1
-    assert abs(meter["needs"]["allocated"] - 50000) < 1  # fit made needs limits sum to target
-
-
-def test_fit_503020_proportional_scaling(db):
-    """fit_503020 must SCALE existing limits proportionally, not split equally."""
-    ensure_settings(db); load_demo_data(db)
-    from app.services.plan import PlanService
-    from app.models import CategoryLimit
-
-    y, mth = date.today().year, date.today().month
-    plan = PlanService.get_or_create_plan(db, y, mth)
-    plan.expected_income = Decimal("100000"); db.commit()
-
-    # Pick two non-hidden needs categories to pre-seed with a 1:3 ratio
-    needs_cats = (
-        db.query(Category)
-        .filter(Category.group == "needs", Category.is_hidden.is_(False))
-        .limit(2)
-        .all()
-    )
-    assert len(needs_cats) >= 2, "demo data must have at least 2 non-hidden needs categories"
-    cat_small, cat_large = needs_cats[0], needs_cats[1]
-
-    db.add(CategoryLimit(plan_id=plan.id, category_id=cat_small.id, limit_amount=Decimal("1000")))
-    db.add(CategoryLimit(plan_id=plan.id, category_id=cat_large.id, limit_amount=Decimal("3000")))
-    db.commit()
-
-    PlanService.fit_503020(db, y, mth)
-
-    # Re-query the two limits fresh from db
-    lim_small = (
-        db.query(CategoryLimit)
-        .filter(CategoryLimit.plan_id == plan.id, CategoryLimit.category_id == cat_small.id)
-        .one()
-    )
-    lim_large = (
-        db.query(CategoryLimit)
-        .filter(CategoryLimit.plan_id == plan.id, CategoryLimit.category_id == cat_large.id)
-        .one()
-    )
-
-    needs_target = Decimal("50000")  # 50% of 100000
-    total = lim_small.limit_amount + lim_large.limit_amount
-    assert abs(total - needs_target) < 1, f"needs limits sum {total} != target {needs_target}"
-
-    # 1:3 ratio → small ≈ 12500, large ≈ 37500
-    assert abs(lim_small.limit_amount - Decimal("12500")) < 50, (
-        f"proportional scaling failed: small={lim_small.limit_amount}, expected ≈12500"
-    )
-    assert abs(lim_large.limit_amount - Decimal("37500")) < 50, (
-        f"proportional scaling failed: large={lim_large.limit_amount}, expected ≈37500"
-    )
 
 
 def test_api_contract(tmp_path):
@@ -244,19 +208,32 @@ def test_api_contract(tmp_path):
     main.app.dependency_overrides[get_db] = override_get_db
 
     client = TestClient(main.app)
+    _authenticate(client)
 
     assert client.get("/api/goals").status_code in (404, 405)
 
     f = client.get("/api/funds").json()[0]
     assert "group" in f and "category_group" not in f
 
-    dep = client.post("/api/deposit/contribute", json={"amount": 5000}).json()
-    assert dep["balance"] >= 5000
+    dep = client.get("/api/deposit").json()
+    assert "term_months" in dep and "balance" not in dep
 
     tx = client.post("/api/transactions", json={"type": "income", "amount": 30000,
                                                 "date": str(date.today())}).json()
     view = client.get(f"/api/allocation/{tx['id']}").json()
     assert "buckets" in view
+
+    savings_cat = next(
+        item for b in view["buckets"] if b["group"] == "savings" for item in b["items"] if item["kind"] == "category"
+    )
+    alloc_resp = client.post(f"/api/allocation/{tx['id']}", json={
+        "allocations": [{"category_id": savings_cat["id"], "amount": 30000, "group": "savings"}]
+    })
+    assert alloc_resp.status_code == 200, alloc_resp.text
+    assert alloc_resp.json()["is_fully_allocated"] is True
+
+    view_after = client.get(f"/api/allocation/{tx['id']}").json()
+    assert "to_deposit" not in view_after["existing"][0]
 
     # Cleanup
     main.app.dependency_overrides = {}
@@ -292,6 +269,7 @@ def test_patch_fund_updates_group(tmp_path):
     main.app.dependency_overrides[get_db] = override_get_db
 
     client = TestClient(main.app)
+    _authenticate(client)
 
     funds = client.get("/api/funds").json()
     assert funds, "demo data must create at least one fund"
@@ -317,14 +295,10 @@ def test_patch_fund_updates_group(tmp_path):
     engine.dispose()
 
 
-def test_deposit_update_cannot_write_balance(tmp_path):
-    """POST /api/deposit must NOT allow overwriting deposit_balance directly.
-
-    Balance is grow-only and must only change via POST /api/deposit/contribute
-    or DepositService.rollback_for_income. Sending a 'balance' field in the
-    update body must be silently ignored (Pydantic strips extra fields) so the
-    balance stays at whatever contribute set it to.
-    """
+def test_deposit_is_a_standalone_calculator(tmp_path):
+    """Deposit settings persist (rate schedule, start date, term, contributions)
+    and the calculator forecasts over the whole term — with no balance/contribute
+    concept left, since it never touches real money or the budget."""
     from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -332,7 +306,7 @@ def test_deposit_update_cannot_write_balance(tmp_path):
     import app.main as main
     from app.db import Base, get_db
 
-    db_path = tmp_path / "test_deposit_hardening.db"
+    db_path = tmp_path / "test_deposit_calculator.db"
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine)
@@ -353,29 +327,29 @@ def test_deposit_update_cannot_write_balance(tmp_path):
     main.app.dependency_overrides[get_db] = override_get_db
 
     client = TestClient(main.app)
+    _authenticate(client)
 
-    # 1. Contribute 10 000 — balance must be 10 000
-    resp = client.post("/api/deposit/contribute", json={"amount": 10000})
-    assert resp.status_code == 200, f"contribute failed: {resp.text}"
-    assert resp.json()["balance"] == 10000.0
+    assert "/api/deposit/contribute" not in {r.path for r in main.app.routes if hasattr(r, "path")}
 
-    # 2. Attempt to lower balance to 0 via the settings update endpoint.
-    #    Include "balance": 0 alongside a valid field so the body is not empty.
-    update_resp = client.post("/api/deposit", json={"balance": 0, "rate": 5.0})
-    # The request must succeed (Pydantic ignores the unknown 'balance' field) …
-    assert update_resp.status_code == 200, f"update endpoint error: {update_resp.text}"
+    update_resp = client.post("/api/deposit", json={
+        "rate": "10",
+        "start_date": "2026-01-01",
+        "term_months": 12,
+        "initial_lump": "100000",
+        "monthly_contribution": "5000",
+        "rate_schedule": '[{"from": "2026-01-01", "rate": 10}, {"from": "2027-01-01", "rate": 12}]',
+    })
+    assert update_resp.status_code == 200, update_resp.text
+    body = update_resp.json()
+    assert body["term_months"] == 12
+    assert body["initial_lump"] == 100000.0
 
-    # 3. … but balance must remain unchanged at 10 000
-    balance_after = update_resp.json()["balance"]
-    assert balance_after == 10000.0, (
-        f"balance was modified by the update endpoint! Got {balance_after}, expected 10000.0"
-    )
+    get_resp = client.get("/api/deposit")
+    assert get_resp.json()["start_date"] == "2026-01-01"
 
-    # Cross-check via GET
-    get_balance = client.get("/api/deposit").json()["balance"]
-    assert get_balance == 10000.0, (
-        f"GET /api/deposit shows {get_balance} after attempted balance write"
-    )
+    calc = client.get("/api/deposit/calculator").json()
+    assert len(calc["rows"]) == 12
+    assert calc["final_balance"] > 100000.0 + 5000 * 11, "interest + contributions must grow the total"
 
     main.app.dependency_overrides = {}
     engine.dispose()

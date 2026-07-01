@@ -59,7 +59,6 @@ def allocation_view(tx_id: int, db: Session = Depends(get_db)):
                 "category_id": a.category_id,
                 "fund_id": a.fund_id,
                 "amount": float(a.amount),
-                "to_deposit": a.to_deposit,
             }
             for a in existing
         ],
@@ -69,7 +68,6 @@ def allocation_view(tx_id: int, db: Session = Depends(get_db)):
 class AllocItem(BaseModel):
     category_id: int | None = None
     fund_id: int | None = None
-    to_deposit: bool = False
     amount: Decimal = Decimal("0")
     group: str = "needs"
 
@@ -84,7 +82,6 @@ def allocate(tx_id: int, body: AllocateBody, db: Session = Depends(get_db)):
         AllocationInput(
             category_id=i.category_id,
             fund_id=i.fund_id,
-            to_deposit=i.to_deposit,
             amount=i.amount,
             group=i.group,
         )

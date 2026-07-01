@@ -32,7 +32,10 @@ DEMO_CATEGORIES = [
     ("Спорт и хобби", "wants", 13, 4),
     ("Подарки", "wants", 14, 4),
     ("Буфер (прочее)", "wants", 15, 4),
+    ("Пополнение вклада", "savings", 16, 4),
 ]
+
+SAVINGS_CATEGORY_NAME = "Пополнение вклада"
 
 DEMO_INCOME_CATEGORIES = [
     ("Зарплата", "income", 101),
@@ -41,15 +44,11 @@ DEMO_INCOME_CATEGORIES = [
 ]
 
 DEFAULT_SETTINGS = {
-    "user1_name": "Я",
-    "user2_name": "Партнёр",
     "currency": "RUB",
-    "eur_usd_rate": "1.08",
-    "eur_rub_rate": "100",
-    "deposit_balance": "0",
     "deposit_rate": "17.5",
     "deposit_cap_day": "18",
     "deposit_start_date": "2025-03-18",
+    "deposit_term_months": "12",
     "deposit_initial_lump": "0",
     "deposit_rate_schedule": "[]",
     "deposit_monthly_target": "0",
@@ -66,6 +65,35 @@ DEMO_SINKING_FUNDS = [
      "monthly_contribution": Decimal("1500"),
      "target_date": date(date.today().year, 12, 1), "group": "wants", "is_rolling": True},
 ]
+
+
+def ensure_savings_category(db: Session) -> None:
+    """Installs seeded before the "Пополнение вклада" category existed (or a
+    clean-start setup with categories already created) get it added once it's
+    onboarded — деньги, отложенные во вклад, needs a real savings category to
+    land in, same as any other expense."""
+    if not is_onboarded(db):
+        return
+    if db.query(Category).filter(Category.name == SAVINGS_CATEGORY_NAME).first():
+        return
+    if not db.query(Category).first():
+        return
+    max_order = db.query(Category).count()
+    db.add(Category(name=SAVINGS_CATEGORY_NAME, group="savings", sort_order=max_order + 1, allocation_level=4))
+    db.commit()
+
+
+def ensure_common_user(db: Session) -> None:
+    """Installs seeded before the "Общий" (shared) payer existed get it added
+    once onboarded — so joint spending (e.g. rent) isn't pinned on one person."""
+    if not is_onboarded(db):
+        return
+    if db.query(AppUser).filter(AppUser.name == "Общий").first():
+        return
+    if not db.query(AppUser).first():
+        return
+    db.add(AppUser(name="Общий"))
+    db.commit()
 
 
 def ensure_settings(db: Session) -> None:
@@ -97,10 +125,11 @@ def _mark_onboarded(db: Session, mode: str) -> None:
 
 
 def load_clean_start(db: Session) -> None:
-    """Minimal start: just two users. Everything else the user creates."""
+    """Minimal start: just the family's users. Everything else the user creates."""
     if not db.query(AppUser).first():
         db.add(AppUser(name="Я"))
         db.add(AppUser(name="Партнёр"))
+        db.add(AppUser(name="Общий"))
     _mark_onboarded(db, "clean")
     db.commit()
 
@@ -120,6 +149,7 @@ def load_demo_data(db: Session) -> None:
     if not db.query(AppUser).first():
         db.add(AppUser(name="Я"))
         db.add(AppUser(name="Партнёр"))
+        db.add(AppUser(name="Общий"))
 
     db.add(
         Debt(
