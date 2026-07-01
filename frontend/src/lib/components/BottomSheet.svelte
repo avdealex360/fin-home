@@ -7,28 +7,36 @@
   }
   let { open, title = '', onclose, children }: Props = $props()
 
-  const CLOSE_THRESHOLD = 90
+  const CLOSE_THRESHOLD = 60
+  const TAP_SLOP = 6
 
   let dragY = $state(0)
   let dragging = $state(false)
   let startY = 0
+  let moved = 0
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onclose()
   }
 
   function onDragStart(e: PointerEvent) {
+    e.preventDefault()
     startY = e.clientY
     dragging = true
+    moved = 0
   }
   function onDragMove(e: PointerEvent) {
     if (!dragging) return
-    dragY = Math.max(0, e.clientY - startY)
+    const delta = e.clientY - startY
+    moved = Math.max(moved, Math.abs(delta))
+    dragY = Math.max(0, delta)
   }
   function onDragEnd() {
     if (!dragging) return
     dragging = false
-    if (dragY > CLOSE_THRESHOLD) {
+    // A near-stationary tap (or a swipe past the threshold) both close —
+    // only a real partial drag that falls short snaps back.
+    if (dragY > CLOSE_THRESHOLD || moved < TAP_SLOP) {
       onclose()
     }
     dragY = 0
@@ -52,10 +60,10 @@
     aria-modal="true"
     aria-label={title}
   >
-    <div class="grabber-area" role="button" tabindex="0" aria-label="Закрыть, потянув вниз" onpointerdown={onDragStart}>
+    <div class="sheet-header" role="button" tabindex="0" aria-label="Закрыть" onpointerdown={onDragStart}>
       <div class="grabber"></div>
+      {#if title}<h2 class="sheet-title">{title}</h2>{/if}
     </div>
-    {#if title}<h2 class="sheet-title">{title}</h2>{/if}
     <div class="sheet-body">
       {@render children()}
     </div>
@@ -90,22 +98,23 @@
   .sheet.dragging {
     transition: none;
   }
-  .grabber-area {
-    padding: var(--space-2) 0;
-    margin: -8px 0 calc(var(--space-1));
+  .sheet-header {
+    padding: var(--space-3) 0;
+    margin: -8px 0 var(--space-2);
     cursor: grab;
     touch-action: none;
+    user-select: none;
   }
   .grabber {
     width: 40px;
     height: 4px;
     border-radius: 999px;
     background: var(--text-muted);
-    margin: 0 auto;
+    margin: 0 auto var(--space-2);
   }
   .sheet-title {
     font-size: var(--text-lg);
-    margin-bottom: var(--space-4);
+    margin: 0;
   }
   .sheet-body { display: flex; flex-direction: column; gap: var(--space-4); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }

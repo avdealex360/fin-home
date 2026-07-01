@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type AllocationView, type AllocationBucket } from '../api'
   import { money } from '../format'
+  import Loader from './Loader.svelte'
 
   interface Props {
     txId: number
@@ -96,7 +97,7 @@
 </script>
 
 {#if !view}
-  <div class="spinner-wrap">Загрузка…</div>
+  <Loader />
 {:else}
   <div class="counter" class:done={Math.abs(remaining) < 1}>
     <span class="counter-label">К распределению</span>

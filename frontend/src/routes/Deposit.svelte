@@ -3,6 +3,7 @@
   import { showToast } from '../lib/stores'
   import { money, formatDate } from '../lib/format'
   import Chart from '../lib/components/Chart.svelte'
+  import Loader from '../lib/components/Loader.svelte'
 
   interface Period {
     yearIndex: number // 2, 3, 4... (year 1 is the base `rate` field)
@@ -89,7 +90,7 @@
 <div class="page-header"><h1>Вклад</h1></div>
 
 {#if !loaded}
-  <div class="spinner-wrap">Загрузка…</div>
+  <Loader />
 {:else}
   <div class="page">
     <p class="muted hint">

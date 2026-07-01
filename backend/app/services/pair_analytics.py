@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import extract, func
@@ -24,7 +25,7 @@ class PairAnalytics:
 
 class PairAnalyticsService:
     @staticmethod
-    def monthly_breakdown(db: Session, year: int, month: int) -> PairAnalytics:
+    def monthly_breakdown(db: Session, start: date, end: date) -> PairAnalytics:
         users = db.query(AppUser).filter(AppUser.is_active.is_(True)).all()
         result_users: list[UserSpending] = []
 
@@ -32,8 +33,7 @@ class PairAnalyticsService:
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
             .filter(
                 Transaction.type == "expense",
-                extract("year", Transaction.date) == year,
-                extract("month", Transaction.date) == month,
+                Transaction.date.between(start, end),
             )
             .scalar()
         ) or Decimal("0")
@@ -44,8 +44,7 @@ class PairAnalyticsService:
                 .filter(
                     Transaction.type == "expense",
                     Transaction.user_id == user.id,
-                    extract("year", Transaction.date) == year,
-                    extract("month", Transaction.date) == month,
+                    Transaction.date.between(start, end),
                 )
                 .scalar()
             ) or Decimal("0")
@@ -59,8 +58,7 @@ class PairAnalyticsService:
                 .filter(
                     Transaction.type == "expense",
                     Transaction.user_id == user.id,
-                    extract("year", Transaction.date) == year,
-                    extract("month", Transaction.date) == month,
+                    Transaction.date.between(start, end),
                 )
                 .group_by(Category.name)
                 .order_by(func.sum(Transaction.amount).desc())

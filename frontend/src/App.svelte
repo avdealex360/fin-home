@@ -8,6 +8,7 @@
   import AllocationSheet from './lib/components/AllocationSheet.svelte'
   import Onboarding from './lib/components/Onboarding.svelte'
   import Login from './lib/components/Login.svelte'
+  import Loader from './lib/components/Loader.svelte'
 
   import Dashboard from './routes/Dashboard.svelte'
   import Plan from './routes/Plan.svelte'
@@ -15,15 +16,32 @@
   import Analytics from './routes/Analytics.svelte'
   import More from './routes/More.svelte'
   import Faq from './routes/Faq.svelte'
+  import Categories from './routes/Categories.svelte'
+  import Transactions from './routes/Transactions.svelte'
 
   let onboarded = $state<boolean | null>(null)
+  let bootError = $state<string | null>(null)
+
+  function checkAuth() {
+    bootError = null
+    api.authMe()
+      .then((s) => authenticated.set(s.authenticated))
+      .catch((e) => (bootError = (e as Error).message || 'Не удалось загрузить приложение'))
+  }
+  function checkOnboarding() {
+    bootError = null
+    api.onboardingStatus()
+      .then((s) => (onboarded = s.onboarded))
+      .catch((e) => (bootError = (e as Error).message || 'Не удалось загрузить приложение'))
+  }
+  function retryBoot() {
+    if ($authenticated) checkOnboarding()
+    else checkAuth()
+  }
+  checkAuth()
 
   $effect(() => {
-    api.authMe().then((s) => authenticated.set(s.authenticated))
-  })
-
-  $effect(() => {
-    if ($authenticated) api.onboardingStatus().then((s) => (onboarded = s.onboarded))
+    if ($authenticated) checkOnboarding()
   })
 
   // Add-operation sheet state machine: closed -> form -> (income) allocate
@@ -54,12 +72,17 @@
   }
 </script>
 
-{#if $authenticated === null}
-  <div class="spinner-wrap">Загрузка…</div>
+{#if bootError}
+  <div class="boot-error">
+    <Loader label={bootError} />
+    <button class="btn btn-primary" onclick={retryBoot}>Повторить</button>
+  </div>
+{:else if $authenticated === null}
+  <Loader />
 {:else if !$authenticated}
   <Login />
 {:else if onboarded === null}
-  <div class="spinner-wrap">Загрузка…</div>
+  <Loader />
 {:else if !onboarded}
   <Onboarding ondone={() => (onboarded = true)} />
 {:else}
@@ -76,6 +99,10 @@
       <More />
     {:else if $route === 'faq'}
       <Faq />
+    {:else if $route === 'categories'}
+      <Categories />
+    {:else if $route === 'transactions'}
+      <Transactions />
     {:else}
       <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
     {/if}
@@ -107,3 +134,12 @@
 
   <Toast />
 {/if}
+
+<style>
+  .boot-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+  }
+</style>

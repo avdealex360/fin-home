@@ -83,6 +83,7 @@ class CategoryBody(BaseModel):
     group: str  # needs | wants | savings | income
     allocation_level: int | None = None
     sort_order: int | None = None
+    is_hidden: bool | None = None
 
 
 @router.get("/categories")
@@ -126,6 +127,8 @@ def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_d
         c.allocation_level = body.allocation_level
     if body.sort_order is not None:
         c.sort_order = body.sort_order
+    if body.is_hidden is not None:
+        c.is_hidden = body.is_hidden
     db.commit()
     db.refresh(c)
     return category_dict(c)

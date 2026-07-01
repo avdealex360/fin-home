@@ -35,6 +35,23 @@ export interface Transaction {
   unallocated?: number
 }
 
+export interface TransactionListResponse {
+  items: Transaction[]
+  total: number
+}
+
+export interface TransactionListParams {
+  year?: number
+  month?: number
+  type?: string
+  category_id?: number
+  user_id?: number
+  sort_by?: 'date' | 'amount'
+  sort_dir?: 'asc' | 'desc'
+  limit?: number
+  offset?: number
+}
+
 export interface GroupSummary {
   name: string
   label: string
@@ -124,13 +141,27 @@ export interface Deposit {
   rate_schedule: string
 }
 
+const REQUEST_TIMEOUT_MS = 15000
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const opts: RequestInit = { method, headers: {}, credentials: 'same-origin' }
   if (body !== undefined) {
     opts.headers = { 'Content-Type': 'application/json' }
     opts.body = JSON.stringify(body)
   }
-  const res = await fetch(`/api${path}`, opts)
+  const controller = new AbortController()
+  opts.signal = controller.signal
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(`/api${path}`, opts)
+  } catch (e) {
+    throw new Error(
+      (e as Error).name === 'AbortError' ? 'Сервер не отвечает, проверьте соединение' : 'Нет соединения с сервером',
+    )
+  } finally {
+    clearTimeout(timer)
+  }
   if (res.status === 401 && path !== '/auth/login') {
     authenticated.set(false)
     throw new Error('unauthorized')
@@ -163,11 +194,17 @@ export const api = {
   updateUser: (id: number, name: string) => req<User>('PATCH', `/users/${id}`, { name }),
   deleteUser: (id: number) => req('DELETE', `/users/${id}`),
 
-  categories: (group?: string) =>
-    req<Category[]>('GET', `/categories${group ? `?group=${group}` : ''}`),
+  categories: (group?: string, includeHidden = false) => {
+    const p = new URLSearchParams()
+    if (group) p.set('group', group)
+    if (includeHidden) p.set('include_hidden', 'true')
+    const qs = p.toString()
+    return req<Category[]>('GET', `/categories${qs ? `?${qs}` : ''}`)
+  },
   createCategory: (b: Partial<Category>) => req<Category>('POST', '/categories', b),
   updateCategory: (id: number, b: Partial<Category>) => req<Category>('PATCH', `/categories/${id}`, b),
-  deleteCategory: (id: number) => req('DELETE', `/categories/${id}`),
+  deleteCategory: (id: number) =>
+    req<{ ok: boolean; hidden?: boolean; deleted?: boolean }>('DELETE', `/categories/${id}`),
 
   dashboard: (year?: number, month?: number) =>
     req<MonthSummary>('GET', `/dashboard${ym(year, month)}`),
@@ -176,7 +213,14 @@ export const api = {
     const p = new URLSearchParams({ limit: String(limit) })
     if (year) p.set('year', String(year))
     if (month) p.set('month', String(month))
-    return req<Transaction[]>('GET', `/transactions?${p}`)
+    return req<TransactionListResponse>('GET', `/transactions?${p}`).then((r) => r.items)
+  },
+  transactionsList: (params: TransactionListParams) => {
+    const p = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+    }
+    return req<TransactionListResponse>('GET', `/transactions?${p}`)
   },
   createTransaction: (b: Partial<Transaction>) => req<Transaction>('POST', '/transactions', b),
   updateTransaction: (id: number, b: Partial<Transaction>) =>
@@ -224,7 +268,8 @@ export const api = {
   planMeter: (y: number, m: number) =>
     req<Record<string, { allocated: number; target: number }>>('GET', `/plan/${y}/${m}/meter`),
 
-  analytics: (year?: number, month?: number) => req<any>('GET', `/analytics${ym(year, month)}`),
+  analytics: (year?: number, month?: number, period: 'month' | 'quarter' | 'year' = 'month') =>
+    req<any>('GET', `/analytics${ym(year, month)}${ym(year, month) ? '&' : '?'}period=${period}`),
 
   settings: () => req<Record<string, string>>('GET', '/settings'),
   saveSettings: (b: unknown) => req('POST', '/settings/general', b),

@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import extract, func
+from sqlalchemy import and_, extract, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, Debt, DebtPayment, MonthlyPlan, Transaction
 from app.seed import GROUP_PERCENTS
+from app.util import months_in_range
 
 
 @dataclass
@@ -31,12 +32,13 @@ class MonthlyTrend:
 
 class AnalyticsService:
     @staticmethod
-    def plan_vs_fact(db: Session, year: int, month: int) -> list[CategoryComparison]:
-        plan = (
+    def plan_vs_fact(db: Session, start: date, end: date) -> list[CategoryComparison]:
+        month_pairs = months_in_range(start, end)
+        plans = (
             db.query(MonthlyPlan)
             .options(joinedload(MonthlyPlan.limits))
-            .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
-            .first()
+            .filter(or_(*(and_(MonthlyPlan.year == y, MonthlyPlan.month == m) for y, m in month_pairs)))
+            .all()
         )
         categories = (
             db.query(Category)
@@ -47,23 +49,22 @@ class AnalyticsService:
         results = []
         for cat in categories:
             plan_amount = Decimal("0")
-            if plan:
+            for plan in plans:
                 lim = next((l for l in plan.limits if l.category_id == cat.id), None)
                 if lim:
-                    plan_amount = lim.limit_amount
+                    plan_amount += lim.limit_amount
                 elif plan.expected_income > 0:
                     pct = GROUP_PERCENTS.get(cat.group, 0)
                     group_cats = [c for c in categories if c.group == cat.group]
                     if group_cats:
-                        plan_amount = plan.expected_income * Decimal(pct) / Decimal("100") / len(group_cats)
+                        plan_amount += plan.expected_income * Decimal(pct) / Decimal("100") / len(group_cats)
 
             fact = (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .filter(
                     Transaction.type == "expense",
                     Transaction.category_id == cat.id,
-                    extract("year", Transaction.date) == year,
-                    extract("month", Transaction.date) == month,
+                    Transaction.date.between(start, end),
                 )
                 .scalar()
             ) or Decimal("0")
@@ -127,14 +128,13 @@ class AnalyticsService:
         return trends
 
     @staticmethod
-    def top_categories(db: Session, year: int, month: int, limit: int = 5) -> list[tuple[str, Decimal]]:
+    def top_categories(db: Session, start: date, end: date, limit: int = 5) -> list[tuple[str, Decimal]]:
         rows = (
             db.query(Category.name, func.sum(Transaction.amount))
             .join(Transaction)
             .filter(
                 Transaction.type == "expense",
-                extract("year", Transaction.date) == year,
-                extract("month", Transaction.date) == month,
+                Transaction.date.between(start, end),
             )
             .group_by(Category.name)
             .order_by(func.sum(Transaction.amount).desc())
@@ -219,9 +219,8 @@ class AnalyticsService:
         )
 
     @staticmethod
-    def split_503020(db: Session, year: int, month: int) -> dict:
+    def split_503020(db: Session, start: date, end: date) -> dict:
         from decimal import Decimal
-        from sqlalchemy import extract, func
         from app.models import Category, Transaction
         from app.services.dashboard import _savings_fund_contributions
 
@@ -230,21 +229,22 @@ class AnalyticsService:
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .join(Category, Category.id == Transaction.category_id)
                 .filter(Transaction.type == "expense", Category.group == group,
-                        extract("year", Transaction.date) == year,
-                        extract("month", Transaction.date) == month)
+                        Transaction.date.between(start, end))
                 .scalar()
             ) or "0"))
 
         income = Decimal(str((
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
-            .filter(Transaction.type == "income",
-                    extract("year", Transaction.date) == year,
-                    extract("month", Transaction.date) == month)
+            .filter(Transaction.type == "income", Transaction.date.between(start, end))
             .scalar()
         ) or "0"))
 
         needs, wants = expense_for("needs"), expense_for("wants")
-        savings = expense_for("savings") + _savings_fund_contributions(db, year, month)
+        fund_contrib = sum(
+            (_savings_fund_contributions(db, y, m) for y, m in months_in_range(start, end)),
+            Decimal("0"),
+        )
+        savings = expense_for("savings") + fund_contrib
         total = (needs + wants + savings) or Decimal("1")
         out = {}
         for name, fact, pct in (("needs", needs, 50), ("wants", wants, 30), ("savings", savings, 20)):

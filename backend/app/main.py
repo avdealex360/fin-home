@@ -69,6 +69,21 @@ async def require_session(request: Request, call_next):
     return await call_next(request)
 
 
+# The SPA shell (index.html) and service worker must never be served stale —
+# iOS Safari's disk cache for installed PWAs is notoriously sticky, and a stale
+# shell after a deploy is a prime cause of a white screen / stuck spinner on
+# reopen. Hashed files under /assets/* are immutable and unaffected.
+_NO_CACHE_PATHS = {"/", "/index.html", "/sw.js", "/registerSW.js", "/manifest.webmanifest"}
+
+
+@app.middleware("http")
+async def no_cache_shell(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path in _NO_CACHE_PATHS:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 for router in (
     auth.router,
     meta.router,

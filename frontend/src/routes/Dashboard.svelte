@@ -3,6 +3,7 @@
   import { period, dataVersion, showToast, invalidate } from '../lib/stores'
   import { money, monthName, formatDate } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
+  import Loader from '../lib/components/Loader.svelte'
 
   interface Props {
     onAllocate: (txId: number) => void
@@ -52,13 +53,10 @@
     })
   }
 
-  const nominalPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
-  const groupLabel = (key: string, label: string) =>
-    nominalPct[key] !== undefined ? `${label} ${nominalPct[key]}%` : label
 </script>
 
 {#if !summary}
-  <div class="spinner-wrap">Загрузка…</div>
+  <Loader />
 {:else}
   <div class="page">
     <!-- Hero -->
@@ -92,7 +90,7 @@
       {#each summary.groups as g}
         <div>
           <div class="row">
-            <span>{groupLabel(g.name, g.label)}</span>
+            <span>{g.label}</span>
             <span class="muted num">
               {#if g.name === 'savings'}
                 <span class="aside-label">отложено</span>
@@ -144,7 +142,9 @@
 
     <!-- Recent -->
     <div>
-      <div class="section-label">Последние операции</div>
+      <a class="section-label recent-link" href="#/transactions">
+        Последние операции <i class="ti ti-chevron-right"></i>
+      </a>
       {#if recent.length === 0}
         <p class="muted">Пока нет операций. Нажмите + чтобы добавить.</p>
       {:else}
@@ -172,6 +172,8 @@
 {/if}
 
 <style>
+  .recent-link { display: flex; align-items: center; gap: 2px; width: fit-content; }
+  .recent-link i { font-size: 14px; }
   .hero-amount { font-size: var(--text-3xl); font-weight: 500; margin: 4px 0; }
   .hero-sub { font-size: var(--text-sm); }
   .hero-chips { display: flex; gap: var(--space-2); margin-top: var(--space-3); }

@@ -17,6 +17,8 @@ from app.services.allocation import get_unallocated_for_tx
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
+_SORT_COLUMNS = {"date": Transaction.date, "amount": Transaction.amount}
+
 
 class TransactionBody(BaseModel):
     type: str  # income | expense | transfer
@@ -31,7 +33,13 @@ class TransactionBody(BaseModel):
 def list_transactions(
     year: int | None = None,
     month: int | None = None,
+    type: str | None = None,
+    category_id: int | None = None,
+    user_id: int | None = None,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
     limit: int = 20,
+    offset: int = 0,
     db: Session = Depends(get_db),
 ):
     q = db.query(Transaction)
@@ -39,8 +47,24 @@ def list_transactions(
         q = q.filter(extract("year", Transaction.date) == year)
     if month:
         q = q.filter(extract("month", Transaction.date) == month)
-    rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(limit).all()
-    return [transaction_dict(t) for t in rows]
+    if type:
+        q = q.filter(Transaction.type == type)
+    if category_id:
+        q = q.filter(Transaction.category_id == category_id)
+    if user_id:
+        q = q.filter(Transaction.user_id == user_id)
+
+    total = q.count()
+
+    column = _SORT_COLUMNS.get(sort_by, Transaction.date)
+    order = column.asc() if sort_dir == "asc" else column.desc()
+    rows = (
+        q.order_by(order, Transaction.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {"items": [transaction_dict(t) for t in rows], "total": total}
 
 
 @router.post("")

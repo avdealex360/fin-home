@@ -3,6 +3,7 @@
   import { period, dataVersion, invalidate, showToast } from '../lib/stores'
   import { money, monthName, shiftMonth } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
+  import Loader from '../lib/components/Loader.svelte'
 
   let plan = $state<any>(null)
   let categories = $state<Category[]>([])
@@ -129,7 +130,7 @@
 </div>
 
 {#if !plan}
-  <div class="spinner-wrap">Загрузка…</div>
+  <Loader />
 {:else}
   <div class="page">
     <div class="card field">

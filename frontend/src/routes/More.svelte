@@ -111,6 +111,8 @@
 <div class="page-header"><h1>Ещё</h1></div>
 
 <div class="page">
+  <a class="btn btn-ghost faq-btn" href="#/transactions"><i class="ti ti-list"></i> Все операции</a>
+  <a class="btn btn-ghost faq-btn" href="#/categories"><i class="ti ti-category"></i> Категории</a>
   <a class="btn btn-ghost faq-btn" href="#/deposit"><i class="ti ti-building-bank"></i> Калькулятор вклада</a>
   <a class="btn btn-ghost faq-btn" href="#/faq"><i class="ti ti-help"></i> Как это работает</a>
 

@@ -158,8 +158,10 @@ def test_savings_category_limit_shows_up_in_group_limit(db):
 def test_analytics_has_503020_split(db):
     ensure_settings(db); load_demo_data(db)
     from app.services.analytics import AnalyticsService
+    from app.util import period_date_range
     y, mth = date.today().year, date.today().month
-    data = AnalyticsService.split_503020(db, y, mth)
+    start, end = period_date_range(y, mth, "month")
+    data = AnalyticsService.split_503020(db, start, end)
     assert set(data.keys()) == {"needs", "wants", "savings"}
     assert set(data["needs"].keys()) == {"fact", "ideal", "percent"}
 
@@ -350,6 +352,123 @@ def test_deposit_is_a_standalone_calculator(tmp_path):
     calc = client.get("/api/deposit/calculator").json()
     assert len(calc["rows"]) == 12
     assert calc["final_balance"] > 100000.0 + 5000 * 11, "interest + contributions must grow the total"
+
+    main.app.dependency_overrides = {}
+    engine.dispose()
+
+
+def test_transactions_list_pagination_filter_sort(tmp_path):
+    """GET /api/transactions supports offset pagination, type/category filters,
+    and sorting — needed by the full transactions history page."""
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import app.models  # noqa: F401
+    import app.main as main
+    from app.db import Base, get_db
+
+    db_path = tmp_path / "test_tx_list.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+
+    seed_session = TestSession()
+    ensure_settings(seed_session)
+    load_demo_data(seed_session)
+    seed_session.close()
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main.app.dependency_overrides = {}
+    main.app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(main.app)
+    _authenticate(client)
+
+    cat_id = client.get("/api/categories").json()[0]["id"]
+    for i, amount in enumerate([1000, 2000, 3000]):
+        client.post("/api/transactions", json={
+            "type": "expense", "amount": amount, "category_id": cat_id,
+            "date": f"2026-07-0{i + 1}",
+        })
+
+    all_resp = client.get("/api/transactions").json()
+    assert all_resp["total"] == 3
+    assert len(all_resp["items"]) == 3
+
+    page1 = client.get("/api/transactions?limit=2&offset=0").json()
+    page2 = client.get("/api/transactions?limit=2&offset=2").json()
+    assert len(page1["items"]) == 2
+    assert len(page2["items"]) == 1
+    assert page1["total"] == page2["total"] == 3
+
+    by_amount_asc = client.get("/api/transactions?sort_by=amount&sort_dir=asc").json()
+    assert [i["amount"] for i in by_amount_asc["items"]] == [1000, 2000, 3000]
+
+    by_category = client.get(f"/api/transactions?category_id={cat_id}").json()
+    assert by_category["total"] == 3
+    other_cat = client.get("/api/categories").json()[1]["id"]
+    by_other_category = client.get(f"/api/transactions?category_id={other_cat}").json()
+    assert by_other_category["total"] == 0
+
+    main.app.dependency_overrides = {}
+    engine.dispose()
+
+
+def test_analytics_period_switch_aggregates_quarter_and_year(tmp_path):
+    """period=quarter/year must sum transactions across the whole range, not
+    just the anchor month — this is what backs the Analytics period toggle."""
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import app.models  # noqa: F401
+    import app.main as main
+    from app.db import Base, get_db
+
+    db_path = tmp_path / "test_analytics_period.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+
+    seed_session = TestSession()
+    ensure_settings(seed_session)
+    load_demo_data(seed_session)
+    seed_session.close()
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main.app.dependency_overrides = {}
+    main.app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(main.app)
+    _authenticate(client)
+
+    cat_id = client.get("/api/categories").json()[0]["id"]
+    # One expense in each month of Q1 2026.
+    for m in (1, 2, 3):
+        client.post("/api/transactions", json={
+            "type": "expense", "amount": 1000, "category_id": cat_id, "date": f"2026-{m:02d}-15",
+        })
+
+    month_resp = client.get("/api/analytics?year=2026&month=2&period=month").json()
+    quarter_resp = client.get("/api/analytics?year=2026&month=2&period=quarter").json()
+
+    month_top = {t["name"]: t["amount"] for t in month_resp["top_categories"]}
+    quarter_top = {t["name"]: t["amount"] for t in quarter_resp["top_categories"]}
+    cat_name = client.get("/api/categories").json()[0]["name"]
+
+    assert month_top.get(cat_name) == 1000
+    assert quarter_top.get(cat_name) == 3000
+    assert quarter_resp["range"]["start"] == "2026-01-01"
+    assert quarter_resp["range"]["end"] == "2026-03-31"
 
     main.app.dependency_overrides = {}
     engine.dispose()

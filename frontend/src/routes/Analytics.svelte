@@ -3,14 +3,20 @@
   import { period, dataVersion } from '../lib/stores'
   import { money, monthName } from '../lib/format'
   import Chart from '../lib/components/Chart.svelte'
+  import Loader from '../lib/components/Loader.svelte'
 
   let data = $state<any>(null)
+  let periodType = $state<'month' | 'quarter' | 'year'>('month')
 
   $effect(() => {
     const { year, month } = $period
     void $dataVersion
-    api.analytics(year, month).then((d) => (data = d))
+    void periodType
+    data = null
+    api.analytics(year, month, periodType).then((d) => (data = d))
   })
+
+  const PERIOD_LABELS: Record<string, string> = { month: 'Месяц', quarter: 'Квартал', year: 'Год' }
 
   let trendLabels = $derived(
     data?.monthly_trends?.map((t: any) => monthName(t.month).slice(0, 3)) ?? [],
@@ -35,8 +41,22 @@
 
 <div class="page-header"><h1>Аналитика</h1></div>
 
+<div class="period-tabs" role="tablist">
+  {#each ['month', 'quarter', 'year'] as p}
+    <button
+      role="tab"
+      aria-selected={periodType === p}
+      class="period-tab"
+      class:active={periodType === p}
+      onclick={() => (periodType = p as typeof periodType)}
+    >
+      {PERIOD_LABELS[p]}
+    </button>
+  {/each}
+</div>
+
 {#if !data}
-  <div class="spinner-wrap">Загрузка…</div>
+  <Loader />
 {:else}
   <div class="page">
     {#if hasTrend}
@@ -70,7 +90,9 @@
                   <span class={isOver ? 'over' : 'ok'}>{pct.toFixed(1)}%</span>
                 </span>
               </div>
-              <div class="row muted small"><span>Идеал: {money(row?.ideal ?? 0)} ₽</span></div>
+              {#if row?.ideal > 0}
+                <div class="row muted small"><span>При таком доходе идеал по 50/30/20: {money(row.ideal)} ₽</span></div>
+              {/if}
               <div class="pbar">
                 <div class="pbar-fill" style="width:{Math.min(pct, 100)}%; background: {isOver ? 'var(--red)' : 'var(--green)'}"></div>
               </div>
@@ -134,4 +156,16 @@
   .pbar { margin-top: 4px; }
   .target { font-size: 0.75rem; }
   .small { font-size: 0.75rem; margin-top: 2px; }
+
+  .period-tabs { display: flex; gap: var(--space-2); padding: var(--space-3) var(--space-4) 0; }
+  .period-tab {
+    flex: 1;
+    background: var(--bg-surface);
+    border: none;
+    color: var(--text-secondary);
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+  }
+  .period-tab.active { background: var(--blue); color: #fff; }
 </style>

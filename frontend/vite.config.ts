@@ -7,6 +7,7 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false, // registered explicitly in main.ts for full control over reload-on-update
       manifest: {
         name: 'fin-home — семейный бюджет',
         short_name: 'fin-home',
@@ -26,6 +27,12 @@ export default defineConfig({
         navigateFallback: '/index.html',
         // Don't serve index.html for /api/* navigation attempts.
         navigateFallbackDenylist: [/^\/api/],
+        // Take over immediately on update instead of waiting for all tabs to
+        // close — iOS PWAs are rarely "fully closed", so without this a stale
+        // shell can stick around indefinitely after a deploy.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
       },
     }),
   ],

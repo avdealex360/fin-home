@@ -7,16 +7,17 @@
 
   interface Props {
     onsubmitted: (tx: Transaction) => void
+    existing?: Transaction
   }
-  let { onsubmitted }: Props = $props()
+  let { onsubmitted, existing }: Props = $props()
 
-  let type = $state<'expense' | 'income'>('expense')
-  let amount = $state(0)
-  let categoryId = $state<number | null>(null)
-  let userId = $state<number | null>(null)
-  let date = $state(new Date().toISOString().slice(0, 10))
-  let comment = $state('')
-  let showComment = $state(false)
+  let type = $state<'expense' | 'income'>(existing?.type === 'income' ? 'income' : 'expense')
+  let amount = $state(existing?.amount ?? 0)
+  let categoryId = $state<number | null>(existing?.category_id ?? null)
+  let userId = $state<number | null>(existing?.user_id ?? null)
+  let date = $state(existing?.date ?? new Date().toISOString().slice(0, 10))
+  let comment = $state(existing?.comment ?? '')
+  let showComment = $state(!!existing?.comment)
   let saving = $state(false)
   let error = $state('')
 
@@ -42,7 +43,7 @@
     ])
     categories = cats
     users = us
-    if (us.length) userId = us[0].id
+    if (us.length && userId === null) userId = us[0].id
     // Build group map from dashboard groups
     const m: Record<string, GroupSummary> = {}
     for (const g of dash.groups) {
@@ -69,7 +70,7 @@
     type === 'income' ? incomeCategories : expenseCategories,
   )
   $effect(() => {
-    if (categoryId && !shownCategories.some((c) => c.id === categoryId)) {
+    if (categories.length && categoryId && !shownCategories.some((c) => c.id === categoryId)) {
       categoryId = null
     }
   })
@@ -95,14 +96,8 @@
     saving = true
     error = ''
     try {
-      const tx = await api.createTransaction({
-        type,
-        amount,
-        category_id: categoryId,
-        user_id: userId,
-        date,
-        comment: comment || null,
-      })
+      const body = { type, amount, category_id: categoryId, user_id: userId, date, comment: comment || null }
+      const tx = existing ? await api.updateTransaction(existing.id, body) : await api.createTransaction(body)
       onsubmitted(tx)
     } catch (e) {
       error = (e as Error).message
@@ -207,7 +202,7 @@
 {#if error}<p class="err">{error}</p>{/if}
 
 <button class="btn btn-primary" onclick={submit} disabled={saving}>
-  {saving ? 'Сохраняю…' : type === 'income' ? 'Добавить и распределить' : 'Записать'}
+  {saving ? 'Сохраняю…' : existing ? 'Сохранить' : type === 'income' ? 'Добавить и распределить' : 'Записать'}
 </button>
 
 <style>
