@@ -132,7 +132,7 @@ export interface Deposit {
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const opts: RequestInit = { method, headers: {} }
+  const opts: RequestInit = { method, headers: {}, credentials: 'same-origin' }
   if (body !== undefined) {
     opts.headers = { 'Content-Type': 'application/json' }
     opts.body = JSON.stringify(body)

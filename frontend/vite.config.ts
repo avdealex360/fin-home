@@ -24,13 +24,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        // API responses are never precached; the shell is.
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api'),
-            handler: 'NetworkOnly',
-          },
-        ],
+        // Don't serve index.html for /api/* navigation attempts.
+        navigateFallbackDenylist: [/^\/api/],
       },
     }),
   ],
