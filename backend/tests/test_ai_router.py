@@ -169,6 +169,19 @@ def _ctx():
                         users=["Леша"], sender_name="Леша", today=date(2026, 7, 2), currency="RUB")
 
 
+def test_parse_with_fallback_logs_request_and_response(caplog, monkeypatch):
+    import logging
+    caplog.set_level(logging.INFO, logger="ai.router")
+    good = '{"entries":[{"amount":360,"type":"expense","category":"Кофе","person":null,"date":null,"comment":null,"confidence":"high"}]}'
+    providers = [_FakeProvider("yandex", output=good)]
+    monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
+    ai_router.parse_with_fallback(None, "кофе 360", _ctx())
+    text = caplog.text
+    assert "ai.request" in text and "кофе 360" in text
+    assert "ai.response" in text and good in text
+    assert "ai.parsed" in text
+
+
 def test_parse_with_fallback_switches_on_failure(monkeypatch):
     good = '{"entries":[{"amount":360,"type":"expense","category":"Кофе","person":null,"date":null,"comment":null,"confidence":"high"}]}'
     providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", output=good)]
