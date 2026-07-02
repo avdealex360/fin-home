@@ -110,3 +110,46 @@ def test_gigachat_quota_raises(monkeypatch):
     monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
     with pytest.raises(AiError):
         p.complete("sys", "usr")
+
+
+from app.services.ai import router as ai_router
+
+
+class _FakeProvider:
+    def __init__(self, name, output=None, fail=False):
+        self.name = name
+        self._output = output
+        self._fail = fail
+
+    def complete(self, system, user):
+        if self._fail:
+            raise AiError("boom")
+        return self._output
+
+    def healthcheck(self):
+        return not self._fail
+
+
+def _ctx():
+    return ParseContext(categories=[{"id": 1, "name": "Кофе", "group": "wants"}],
+                        users=["Леша"], sender_name="Леша", today=date(2026, 7, 2), currency="RUB")
+
+
+def test_parse_with_fallback_switches_on_failure(monkeypatch):
+    good = '{"entries":[{"amount":360,"type":"expense","category":"Кофе","person":null,"date":null,"comment":null,"confidence":"high"}]}'
+    providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", output=good)]
+    monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
+    out = ai_router.parse_with_fallback(None, "кофе 360", _ctx())
+    assert len(out) == 1 and out[0].amount == Decimal("360")
+
+
+def test_parse_with_fallback_all_fail_returns_empty(monkeypatch):
+    providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", fail=True)]
+    monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
+    assert ai_router.parse_with_fallback(None, "кофе 360", _ctx()) == []
+
+
+def test_complete_with_fallback(monkeypatch):
+    providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", output="tip")]
+    monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
+    assert ai_router.complete_with_fallback(None, "s", "u") == "tip"
