@@ -13,6 +13,7 @@ class AppUser(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    telegram_id: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
 

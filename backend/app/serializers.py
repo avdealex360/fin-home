@@ -20,7 +20,7 @@ from app.models import (
 
 
 def user_dict(u: AppUser) -> dict:
-    return {"id": u.id, "name": u.name, "is_active": u.is_active}
+    return {"id": u.id, "name": u.name, "is_active": u.is_active, "telegram_id": u.telegram_id}
 
 
 def category_dict(c: Category) -> dict:
