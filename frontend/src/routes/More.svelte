@@ -10,6 +10,7 @@
   let newUserName = $state('')
   let editingUserId = $state<number | null>(null)
   let editingUserName = $state('')
+  let editingUserTgId = $state<string>('')
 
   // Which item has its action panel open: `${kind}:${id}` and the mode.
   let openPanel = $state<string | null>(null)
@@ -32,17 +33,18 @@
 
   async function addUser() {
     if (!newUserName.trim()) return
-    await api.createUser(newUserName.trim())
+    await api.createUser({ name: newUserName.trim() })
     newUserName = ''
     invalidate()
   }
   function startEditUser(u: User) {
     editingUserId = u.id
     editingUserName = u.name
+    editingUserTgId = u.telegram_id ?? ''
   }
   async function saveUserEdit() {
     if (editingUserId == null || !editingUserName.trim()) return
-    await api.updateUser(editingUserId, editingUserName.trim())
+    await api.updateUser(editingUserId, { name: editingUserName.trim(), telegram_id: editingUserTgId || null })
     editingUserId = null
     invalidate()
   }
@@ -114,6 +116,7 @@
   <a class="btn btn-ghost faq-btn" href="#/transactions"><i class="ti ti-list"></i> Все операции</a>
   <a class="btn btn-ghost faq-btn" href="#/categories"><i class="ti ti-category"></i> Категории</a>
   <a class="btn btn-ghost faq-btn" href="#/deposit"><i class="ti ti-building-bank"></i> Калькулятор вклада</a>
+  <a class="btn btn-ghost faq-btn" href="#/integrations"><i class="ti ti-robot"></i> Телеграм-бот и AI</a>
   <a class="btn btn-ghost faq-btn" href="#/faq"><i class="ti ti-help"></i> Как это работает</a>
 
   <!-- Funds -->
@@ -235,6 +238,7 @@
         <div class="row">
           {#if editingUserId === u.id}
             <input class="input" bind:value={editingUserName} />
+            <input class="input" bind:value={editingUserTgId} placeholder="Telegram ID (для бота)" />
             <button class="btn-ghost btn-sm" onclick={saveUserEdit} aria-label="Сохранить имя"><i class="ti ti-check"></i></button>
           {:else}
             <span>{u.name}</span>
