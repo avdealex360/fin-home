@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import hmac
-import logging
 
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.services.ai_trace import trace_block
 from app.services.settings_store import get_secret
 from app.services.telegram_bot import handle_update
 
 router = APIRouter(prefix="/api/tg", tags=["telegram"])
-log = logging.getLogger("app.tg_webhook")
 
 
 @router.post("/webhook/{secret}")
@@ -32,11 +31,11 @@ async def webhook(
     update = await request.json()
     msg = update.get("message") or update.get("edited_message") or {}
     text = (msg.get("text") or "")[:120]
-    log.info(
-        "webhook hit update_id=%s tg_id=%s text=%r",
-        update.get("update_id"),
-        msg.get("from", {}).get("id"),
-        text or update.get("callback_query", {}).get("data", ""),
+    trace_block(
+        "webhook.hit",
+        update_id=str(update.get("update_id", "")),
+        tg_id=str(msg.get("from", {}).get("id", "")),
+        text=text or str(update.get("callback_query", {}).get("data", "")),
     )
     handle_update(db, update)
     return {"ok": True}

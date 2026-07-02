@@ -19,14 +19,16 @@ from app.api import (
     transactions,
 )
 from app.db import SessionLocal
-from app.logging_config import configure_app_logging
 from app.migrations import run_migrations
 from app.seed import ensure_common_user, ensure_savings_category, ensure_settings
+from app.services.ai_trace import LOG_FILE, trace_block
 from app.services.auth import SESSION_COOKIE, is_valid_session
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 (DATA_DIR / "backups").mkdir(exist_ok=True)
+
+_BUILD_ID = Path("/app/BUILD_ID")
 
 
 @asynccontextmanager
@@ -39,7 +41,8 @@ async def lifespan(app: FastAPI):
         ensure_common_user(db)
     finally:
         db.close()
-    configure_app_logging()
+    build_id = _BUILD_ID.read_text(encoding="utf-8").strip() if _BUILD_ID.is_file() else "local"
+    trace_block("app.started", build_id=build_id, log_file=str(LOG_FILE.resolve()))
     yield
 
 

@@ -67,7 +67,9 @@ if [ ! -f certs/cert.pem ]; then
 fi
 
 echo "==> Build and start containers"
-compose up -d --build
+export GIT_COMMIT="$(git rev-parse HEAD)"
+compose build budget-app
+compose up -d --force-recreate
 
 wait_for_app
 

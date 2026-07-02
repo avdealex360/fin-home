@@ -11,8 +11,8 @@ UVICORN ?= uvicorn
 
 .PHONY: help setup install dev test \
         up down restart rebuild logs ps shell \
-        prod-up prod-down prod-restart prod-rebuild prod-logs prod-ps prod-shell \
-        prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset prod-certs \
+        prod-up prod-down prod-restart prod-rebuild prod-rebuild-nocache prod-logs prod-ps prod-shell \
+        prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset prod-certs prod-verify prod-tail-ai \
         migrate migrate-local migrate-stamp \
         backup deploy install-compose vps-setup
 
@@ -97,8 +97,15 @@ prod-down: ## Остановить prod-стек
 prod-restart: ## Перезапустить prod-стек
 	$(COMPOSE_PROD) restart
 
-prod-rebuild: setup ## Пересобрать prod-стек
-	$(COMPOSE_PROD) up -d --build --force-recreate
+prod-rebuild: setup ## Пересобрать prod-стек (git pull + build с GIT_COMMIT)
+	git fetch origin main && git reset --hard origin/main
+	GIT_COMMIT=$$(git rev-parse HEAD) $(COMPOSE_PROD) build budget-app
+	GIT_COMMIT=$$(git rev-parse HEAD) $(COMPOSE_PROD) up -d --force-recreate
+
+prod-rebuild-nocache: setup ## Пересобрать prod без Docker cache (если build-arg не помог)
+	git fetch origin main && git reset --hard origin/main
+	GIT_COMMIT=$$(git rev-parse HEAD) $(COMPOSE_PROD) build --no-cache budget-app
+	GIT_COMMIT=$$(git rev-parse HEAD) $(COMPOSE_PROD) up -d --force-recreate
 
 prod-logs: ## Логи prod-стека (follow)
 	$(COMPOSE_PROD) logs -f
@@ -107,7 +114,18 @@ prod-logs-app: ## Логи только budget-app (без Caddy)
 	$(COMPOSE_PROD) logs -f budget-app
 
 prod-tail-ai: ## AI/TG лог-файл на хосте (data volume)
-	tail -f data/ai-debug.log
+	tail -f data/ai-requests.log
+
+prod-verify: ## Проверить деплой: git, BUILD_ID, app.started в логе
+	@echo "==> git: $$(git rev-parse --short HEAD)"
+	@echo "==> container BUILD_ID:"
+	@$(COMPOSE_PROD) exec -T budget-app cat /app/BUILD_ID
+	@if grep -q 'app.started' data/ai-requests.log 2>/dev/null; then \
+		echo "OK: app.started в data/ai-requests.log"; \
+	else \
+		echo "WARN: app.started не найден — подождите старт или проверьте образ"; \
+		exit 1; \
+	fi
 
 prod-ps: ## Статус prod-контейнеров
 	$(COMPOSE_PROD) ps

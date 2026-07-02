@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import time
 
 from sqlalchemy.orm import Session
@@ -15,43 +14,31 @@ from app.services.ai.base import (
 )
 from app.services.ai.gigachat import GigaChatProvider
 from app.services.ai.yandex import YandexProvider
+from app.services.ai_trace import trace_block
 from app.services.settings_store import get_secret, get_setting
 
-log = logging.getLogger("ai.router")
+
 def _log_request(kind: str, provider: str, attempt: int, total: int, system: str, user: str) -> None:
-    log.info(
-        "ai.request kind=%s provider=%s attempt=%d/%d\n"
-        "--- system ---\n%s\n"
-        "--- user ---\n%s",
-        kind, provider, attempt, total, system, user,
+    trace_block(
+        f"ai.request kind={kind} provider={provider} attempt={attempt}/{total}",
+        system=system,
+        user=user,
     )
 
 
 def _log_response(kind: str, provider: str, elapsed_ms: float, raw: str, *, extra: str = "") -> None:
-    suffix = f" {extra}" if extra else ""
-    log.info(
-        "ai.response kind=%s provider=%s elapsed_ms=%.0f%s\n"
-        "--- raw ---\n%s",
-        kind, provider, elapsed_ms, suffix, raw,
-    )
+    title = f"ai.response kind={kind} provider={provider} elapsed_ms={elapsed_ms:.0f}"
+    if extra:
+        title += f" {extra}"
+    trace_block(title, raw=raw)
 
 
 def _log_failure(kind: str, provider: str, elapsed_ms: float | None, error: str, raw: str | None = None) -> None:
+    ms = f"{elapsed_ms:.0f}" if elapsed_ms is not None else "?"
+    sections: dict[str, str] = {"error": error}
     if raw is not None:
-        log.warning(
-            "ai.failed kind=%s provider=%s elapsed_ms=%s error=%s\n"
-            "--- raw ---\n%s",
-            kind, provider,
-            f"{elapsed_ms:.0f}" if elapsed_ms is not None else "?",
-            error, raw,
-        )
-    else:
-        log.warning(
-            "ai.failed kind=%s provider=%s elapsed_ms=%s error=%s",
-            kind, provider,
-            f"{elapsed_ms:.0f}" if elapsed_ms is not None else "?",
-            error,
-        )
+        sections["raw"] = raw
+    trace_block(f"ai.failed kind={kind} provider={provider} elapsed_ms={ms}", **sections)
 
 
 def _complete_logged(provider: AiProvider, kind: str, attempt: int, total: int, system: str, user: str) -> str:
@@ -100,7 +87,7 @@ def complete_with_fallback(db: Session, system: str, user: str) -> tuple[str | N
             return raw, provider.name
         except AiError:
             continue
-    log.warning("ai.exhausted kind=complete providers=%d", total)
+    trace_block(f"ai.exhausted kind=complete providers={total}")
     return None, None
 
 
@@ -120,7 +107,7 @@ def parse_with_fallback(
         except AiError as e:
             _log_failure("parse", provider.name, None, f"parse_entries: {e}", raw=raw)
             continue
-        log.info("ai.parsed kind=parse provider=%s entries=%d", provider.name, len(entries))
+        trace_block(f"ai.parsed kind=parse provider={provider.name} entries={len(entries)}")
         return entries, provider.name
-    log.warning("ai.exhausted kind=parse providers=%d user_text=%s", total, text)
+    trace_block(f"ai.exhausted kind=parse providers={total}", user_text=text)
     return [], None

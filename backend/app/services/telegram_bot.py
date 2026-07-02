@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models import AppUser, Category, Transaction
 from app.services.ai.base import ParseContext
 from app.services.ai.router import parse_with_fallback, provider_label
+from app.services.ai_trace import trace_block
 from app.services.daily_digest import get_or_build as build_digest
 from app.services.settings_store import get_secret, get_setting
 from app.services.tg_client import answer_callback_query, send_message
@@ -96,7 +97,7 @@ def handle_update(db: Session, update: dict) -> None:
         if not text:
             return
 
-        log.info("telegram.incoming tg_id=%s text=%r", tg_id, text)
+        trace_block("telegram.incoming", tg_id=tg_id, text=text)
         _handle_text(db, token, chat_id, tg_id, sender, text)
     except Exception:  # webhook must never raise
         log.exception("handle_update failed")

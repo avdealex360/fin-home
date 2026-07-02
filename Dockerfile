@@ -11,11 +11,15 @@ FROM python:3.12-slim AS backend
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
+ARG GIT_COMMIT=unknown
+LABEL git.commit=$GIT_COMMIT
+
 RUN useradd -m -u 1000 appuser && mkdir -p /app/data/backups
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN echo "$GIT_COMMIT" > /app/BUILD_ID
 COPY backend/ ./
 # Built SPA goes where main.py looks for it (Path("static_spa")).
 COPY --from=frontend /fe/dist ./static_spa
