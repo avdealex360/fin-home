@@ -91,7 +91,7 @@ def _handle_text(db, token, chat_id, tg_id, sender, text) -> None:
     total = sum(t.amount for t in txs)
     lines = [f"✅ {len(txs)} операц. на <b>{float(total):,.0f}".replace(",", " ") + " ₽</b>"]
     for t, e in zip(txs, entries):
-        cat = db.query(Category).get(t.category_id).name if t.category_id else "без категории"
+        cat = db.get(Category, t.category_id).name if t.category_id else "без категории"
         warn = " ⚠️ проверь" if (e.confidence != "high" or t.category_id is None) else ""
         lines.append(f"• {float(t.amount):,.0f}".replace(",", " ") + f" ₽ — {cat}{warn}")
     send_message(token, chat_id, "\n".join(lines))

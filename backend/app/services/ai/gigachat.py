@@ -71,7 +71,7 @@ class GigaChatProvider:
 
     def healthcheck(self) -> bool:
         try:
-            self.complete("Ответь одним словом.", "ок")
+            self._ensure_token()
             return True
         except AiError:
             return False

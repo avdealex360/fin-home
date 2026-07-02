@@ -112,6 +112,26 @@ def test_gigachat_quota_raises(monkeypatch):
         p.complete("sys", "usr")
 
 
+def test_gigachat_healthcheck_uses_oauth_only(monkeypatch):
+    def handler(request):
+        if request.url.path.endswith("/oauth"):
+            return httpx.Response(200, json={"access_token": "tok", "expires_at": 9999999999000})
+        pytest.fail("healthcheck must not call the chat completion endpoint")
+
+    p = GigaChatProvider("authkey")
+    monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
+    assert p.healthcheck() is True
+
+
+def test_gigachat_healthcheck_false_on_oauth_failure(monkeypatch):
+    def handler(request):
+        return httpx.Response(401, json={"error": "bad key"})
+
+    p = GigaChatProvider("authkey")
+    monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
+    assert p.healthcheck() is False
+
+
 from app.services.ai import router as ai_router
 
 

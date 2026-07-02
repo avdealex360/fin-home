@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -19,7 +21,11 @@ async def webhook(
     db: Session = Depends(get_db),
 ):
     expected = get_secret(db, "secret.tg_webhook_secret")
-    if not expected or secret != expected or x_telegram_bot_api_secret_token != expected:
+    if (
+        not expected
+        or not hmac.compare_digest(secret, expected)
+        or not hmac.compare_digest(x_telegram_bot_api_secret_token or "", expected)
+    ):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
     update = await request.json()
     handle_update(db, update)
