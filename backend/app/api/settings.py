@@ -49,7 +49,11 @@ def export_json(db: Session = Depends(get_db)):
         "debts": [debt_dict(d) for d in db.query(Debt).all()],
         "funds": [fund_dict(f) for f in db.query(SinkingFund).all()],
         "users": [{"id": u.id, "name": u.name} for u in db.query(AppUser).all()],
-        "settings": {s.key: s.value for s in db.query(Setting).all()},
+        "settings": {
+            s.key: s.value
+            for s in db.query(Setting).all()
+            if not s.key.startswith("secret.")
+        },
     }
     buf = io.BytesIO(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
     return StreamingResponse(
