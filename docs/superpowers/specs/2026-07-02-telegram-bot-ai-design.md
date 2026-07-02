@@ -30,7 +30,12 @@
 5. **Весь app переезжает на `https://lunalis.tech`** с Let's Encrypt через Caddy.
 6. **Дата — из текста.** AI понимает «вчера / позавчера / N дней назад / в
    понедельник» относительно переданной сегодняшней даты; если не упомянута — сегодня.
-7. Осознанные упрощения: без aiogram (тонкий httpx-клиент); `/undo` живёт только
+7. **Команда `/stats`** — статистика + «совет дня». Совет: **случайная ротация**
+   каждый день между двумя режимами AI — (а) персональный на основе статистики,
+   (б) тематический по фин-грамотности; при недоступности AI — статичный из списка.
+   Дайджест **кэшируется на календарный день**: первый запрос строит и сохраняет,
+   остальные за день получают тот же.
+8. Осознанные упрощения: без aiogram (тонкий httpx-клиент); `/undo` живёт только
    в памяти процесса (не переживает рестарт — приемлемо для семейного бота).
 
 ## Архитектура
@@ -44,11 +49,12 @@ backend/app/
     telegram_bot.py            — оркестрация: whitelist, команды, запись, ответ
     tg_client.py               — тонкий httpx-клиент Telegram Bot API (sendMessage, setWebhook, getMe)
     tx_resolver.py             — ParsedEntry -> category_id/user_id -> Transaction
+    daily_digest.py            — /stats: сбор статы + «совет дня», кэш на день
     ai/
-      base.py                  — интерфейс AiProvider + dataclass ParsedEntry + PARSE_PROMPT
+      base.py                  — интерфейс AiProvider (parse + complete) + ParsedEntry + промпты
       yandex.py                — YandexGPT (Api-Key + folder_id)
       gigachat.py              — GigaChat (OAuth client-credentials, кэш токена ~30 мин)
-      router.py                — fallback-цепочка primary -> secondary
+      router.py                — fallback-цепочка primary -> secondary (parse и complete)
 ```
 
 ### Поток обработки апдейта
@@ -58,8 +64,9 @@ backend/app/
    Несовпадение → `403`.
 2. Извлекаем `from.id`, `text`. Whitelist: `from.id` должен быть в `AppUser.telegram_id`
    среди активных. Иначе — вежливый отказ, ничего не пишем.
-3. Команды: `/start`, `/help` → справка; `/undo` → удалить операции последней пачки
-   этого `telegram_id`.
+3. Команды: `/start`, `/help` → справка (и `from.id` для привязки); `/undo` →
+   удалить операции последней пачки этого `telegram_id`; `/stats` → дневной
+   дайджест (см. раздел «Статистика и совет дня»).
 4. Обычный текст → `ai.router.parse(text, context)` → `list[ParsedEntry]`.
 5. Резолв каждого entry (`tx_resolver`):
    - **person**: из `entry.person`, иначе — `AppUser` отправителя;
@@ -125,9 +132,13 @@ class ParsedEntry:
 
 class AiProvider(Protocol):
     name: str
-    def parse(self, text: str, ctx: ParseContext) -> list[ParsedEntry]: ...
+    def complete(self, system: str, user: str) -> str: ...   # базовый вызов LLM
+    def parse(self, text: str, ctx: ParseContext) -> list[ParsedEntry]: ...  # поверх complete
     def healthcheck(self) -> bool: ...
 ```
+
+`parse` и «совет дня» строятся поверх единого `complete(system, user)`; router
+даёт `parse_with_fallback` и `complete_with_fallback` с одной и той же цепочкой.
 
 `ParseContext` содержит: список категорий (`id, name, group`), список людей,
 имя отправителя, сегодняшнюю дату (ISO), валюту.
@@ -159,6 +170,33 @@ class AiProvider(Protocol):
 - **YandexGPT**: `POST .../foundationModels/v1/completion`,
   заголовок `Authorization: Api-Key <key>`, `modelUri=gpt://<folder_id>/yandexgpt-lite`.
 - httpx-таймаут ~15 c на провайдера.
+
+## Статистика и совет дня (`/stats`)
+
+`services/daily_digest.py` — `get_or_build(db) -> str`:
+
+1. Ключ кэша `digest.<YYYY-MM-DD>` в `Setting` (JSON: `stats_text`, `tip_text`,
+   `tip_mode`). Если запись за сегодня есть → вернуть её (кэш «на всех, на день»).
+2. Иначе **собрать статистику** из существующих сервисов (`dashboard.py`,
+   `analytics.py`, `pair_analytics.py`) — без AI:
+   - траты за текущий месяц и остаток до конца плана;
+   - топ-категория месяца;
+   - фактический сплит 50/30/20 (needs/wants/savings) vs целевой;
+   - сравнение с прошлым месяцем (± %);
+   - разбивка по людям (Леша/Катя/Общее).
+3. **Совет дня — случайная ротация** режима на день:
+   - `random.choice(["stats", "literacy"])`;
+   - `stats` → `ai.complete_with_fallback(system, user)` с агрегатами из п.2,
+     просим короткий персональный совет по цифрам;
+   - `literacy` → тот же `complete`, но просим общий совет по фин-грамотности на
+     случайную тему (подушка, проценты, импульсивные траты, правило 50/30/20, …);
+   - AI недоступен (оба провайдера легли) → `random.choice(STATIC_TIPS)` из
+     курируемого списка в коде.
+4. Сохранить JSON в `Setting` и вернуть отформатированный текст.
+
+Кэш — снапшот на момент первого запроса за день (согласовано). Старые записи
+`digest.*` можно чистить лениво (при построении нового удалять записи прошлых дат)
+либо оставить — их немного.
 
 ## Настройки в UI
 
@@ -210,7 +248,9 @@ class AiProvider(Protocol):
   6. Вход в приложение → «Интеграции»: вставить ключи, выбрать провайдера,
      включить бота, «Проверить», «Переустановить webhook».
   7. Привязать людей: каждый шлёт боту `/start`, вписать `telegram_id`.
-  8. Отладка: где смотреть логи webhook, частые ошибки (403 webhook, 401 AI,
+  8. Команды бота: свободный текст (запись трат), `/stats` (статистика + совет
+     дня), `/undo`, `/help`.
+  9. Отладка: где смотреть логи webhook, частые ошибки (403 webhook, 401 AI,
      quota → fallback, нераспознанная категория).
 - **`CLAUDE.md`**: короткий раздел про бота (эндпоинт, сервисы, где ключи).
 
@@ -226,11 +266,15 @@ class AiProvider(Protocol):
 - Дата: «вчера/позавчера/N дней назад» → корректная ISO; без даты → сегодня.
 - Фильтрация `secret.*` в `GET /api/settings` и `export_json`.
 - Webhook: неверный секрет/заголовок → 403; неизвестный `telegram_id` → отказ.
+- `daily_digest`: первый вызов строит и пишет кэш; повторный за тот же день —
+  тот же текст без второго вызова AI (мок `complete`); AI недоступен → статичный
+  совет; смена даты → пересборка.
 
 ## Вне рамок (YAGNI)
 
 - Голосовые сообщения, фото чеков, OCR.
 - Редактирование операций из Telegram (правки — в UI).
 - Персистентный `/undo` через БД.
-- Аналитика/отчёты в боте.
+- Автопуш дайджеста по расписанию (планировщик/cron) — `/stats` только по команде;
+  расширенная аналитика/отчёты в боте сверх дневного дайджеста.
 - Мультивалютный разбор (берём валюту из настроек).
