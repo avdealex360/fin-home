@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, Category, Transaction

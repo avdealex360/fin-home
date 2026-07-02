@@ -55,3 +55,15 @@ def test_create_transactions_writes_and_marks_unresolved(db):
     assert txs[1].category_id is None
     assert "Несуществующая" in (txs[1].comment or "")
     assert db.query(Transaction).count() == 2
+
+
+def test_resolve_category_uppercase_cyrillic(db):
+    # SQLite's lower()/ilike don't fold Cyrillic case — this guards the Python-level fix.
+    assert tx_resolver.resolve_category_id(db, "КОФЕ") is not None
+    assert tx_resolver.resolve_category_id(db, "ПРОДУКТЫ") is not None
+
+
+def test_resolve_user_uppercase_keyword_common(db):
+    sender = db.query(AppUser).filter_by(name="Леша").first()
+    common = db.query(AppUser).filter_by(name="Общий").first()
+    assert tx_resolver.resolve_user_id(db, "ОБЩЕЕ", sender) == common.id
