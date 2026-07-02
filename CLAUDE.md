@@ -75,6 +75,17 @@ make deploy                   # git pull + rebuild (run on VPS)
 
 Alembic migrations in `backend/alembic/versions/`; `app/migrations.py` runs `upgrade head` on startup. To add one: `cd backend && .venv/bin/alembic revision --autogenerate -m "..."`.
 
+## Telegram bot
+
+Webhook-based bot (`app/api/telegram.py` → `POST /api/tg/webhook/{secret}`, public,
+excluded from session auth). Free-form text is parsed by `services/ai/` (YandexGPT
+→ GigaChat fallback via `router.py`) into `ParsedEntry`, resolved to categories/
+people by `tx_resolver.py`, written immediately. `/stats` returns a day-cached
+digest (`services/daily_digest.py`) with a rotating AI/static tip. Keys live in the
+`Setting` table under `secret.*` (excluded from export, masked in GET), editable in
+the app's «Интеграции» screen. People link to Telegram via `AppUser.telegram_id`
+(also the access whitelist). Setup guide: `docs/telegram-bot-setup.md`.
+
 ## Deployment
 
 GitHub Actions → VPS on `git push origin main`; VPS runs `scripts/deploy.sh` (git pull + `make prod-rebuild` + `make prod-migrate`). Caddy serves HTTPS (self-signed cert via `scripts/gen-certs.sh`) and proxies to the app, which enforces its own login/session auth.

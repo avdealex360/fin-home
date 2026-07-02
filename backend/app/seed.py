@@ -52,6 +52,8 @@ DEFAULT_SETTINGS = {
     "deposit_initial_lump": "0",
     "deposit_rate_schedule": "[]",
     "deposit_monthly_target": "0",
+    "ai_primary_provider": "yandex",
+    "tg_bot_enabled": "",
     "onboarded": "",  # empty until the user picks demo or clean start
 }
 

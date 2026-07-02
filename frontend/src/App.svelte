@@ -18,6 +18,7 @@
   import Faq from './routes/Faq.svelte'
   import Categories from './routes/Categories.svelte'
   import Transactions from './routes/Transactions.svelte'
+  import Integrations from './routes/Integrations.svelte'
 
   let onboarded = $state<boolean | null>(null)
   let bootError = $state<string | null>(null)
@@ -103,6 +104,8 @@
       <Categories />
     {:else if $route === 'transactions'}
       <Transactions />
+    {:else if $route === 'integrations'}
+      <Integrations />
     {:else}
       <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
     {/if}

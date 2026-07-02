@@ -47,6 +47,7 @@ def onboard(body: OnboardBody, db: Session = Depends(get_db)):
 # ---- users ----
 class UserBody(BaseModel):
     name: str
+    telegram_id: str | None = None
 
 
 @router.get("/users")
@@ -57,7 +58,7 @@ def list_users(db: Session = Depends(get_db)):
 
 @router.post("/users")
 def create_user(body: UserBody, db: Session = Depends(get_db)):
-    u = AppUser(name=body.name)
+    u = AppUser(name=body.name, telegram_id=body.telegram_id or None)
     db.add(u)
     db.commit()
     db.refresh(u)
@@ -70,6 +71,7 @@ def update_user(user_id: int, body: UserBody, db: Session = Depends(get_db)):
     if not u:
         raise HTTPException(404, "user not found")
     u.name = body.name
+    u.telegram_id = body.telegram_id or None
     db.commit()
     db.refresh(u)
     return user_dict(u)
