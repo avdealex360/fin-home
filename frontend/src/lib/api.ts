@@ -18,6 +18,7 @@ export interface User {
   id: number
   name: string
   is_active: boolean
+  telegram_id: string | null
 }
 
 export interface Transaction {
@@ -143,6 +144,17 @@ export interface Deposit {
   rate_schedule: string
 }
 
+export interface Integrations {
+  tg_bot_token: boolean
+  yandex_api_key: boolean
+  yandex_folder_id: boolean
+  gigachat_auth_key: boolean
+  tg_bot_token_mask: string
+  ai_primary_provider: 'yandex' | 'gigachat'
+  tg_bot_enabled: boolean
+  webhook_set: boolean
+}
+
 const REQUEST_TIMEOUT_MS = 15000
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -192,8 +204,8 @@ export const api = {
   onboard: (mode: 'demo' | 'clean') => req('POST', '/onboarding', { mode }),
 
   users: () => req<User[]>('GET', '/users'),
-  createUser: (name: string) => req<User>('POST', '/users', { name }),
-  updateUser: (id: number, name: string) => req<User>('PATCH', `/users/${id}`, { name }),
+  createUser: (b: { name: string; telegram_id?: string | null }) => req<User>('POST', '/users', b),
+  updateUser: (id: number, b: { name: string; telegram_id?: string | null }) => req<User>('PATCH', `/users/${id}`, b),
   deleteUser: (id: number) => req('DELETE', `/users/${id}`),
 
   categories: (group?: string, includeHidden = false) => {
@@ -275,4 +287,12 @@ export const api = {
 
   settings: () => req<Record<string, string>>('GET', '/settings'),
   saveSettings: (b: unknown) => req('POST', '/settings/general', b),
+
+  integrations: () => req<Integrations>('GET', '/settings/integrations'),
+  saveIntegrations: (b: Partial<{
+    tg_bot_token: string; yandex_api_key: string; yandex_folder_id: string;
+    gigachat_auth_key: string; ai_primary_provider: string; tg_bot_enabled: boolean
+  }>) => req('POST', '/settings/integrations', b),
+  testIntegrations: () => req<{ telegram: boolean; yandex: boolean; gigachat: boolean }>('POST', '/settings/integrations/test'),
+  setWebhook: () => req<{ ok: boolean; url: string; error?: string }>('POST', '/settings/integrations/set-webhook'),
 }
