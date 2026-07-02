@@ -40,29 +40,24 @@ if ! wait_for_app; then
 fi
 echo "OK"
 
-echo "==> caddy :443 (budget-app → caddy по docker-сети)"
-compose exec -T budget-app python -c "
-import ssl
-import urllib.error
-import urllib.request
-
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
-try:
-    urllib.request.urlopen('https://caddy/', context=ctx, timeout=5)
-except urllib.error.HTTPError as e:
-    if e.code not in (200, 401):
-        raise
-"
-echo "OK"
-
-echo "==> caddy :443 (с хоста VPS)"
-code="$(curl -ks -o /dev/null -w '%{http_code}' --connect-timeout 5 https://127.0.0.1/ || true)"
-if [ "$code" = "401" ] || [ "$code" = "200" ]; then
-    echo "OK (HTTP $code)"
+echo "==> caddy :443 (TLS + домен lunalis.tech, с хоста VPS)"
+# Caddy обслуживает только домен (Let's Encrypt), поэтому стучимся с
+# SNI=lunalis.tech на локальный caddy через --resolve. На «чужой» SNI
+# (caddy / 127.0.0.1) сертификата нет → TLS alert, это НЕ признак сбоя.
+# /api/health публичный → 200. Ретраи гасят задержку выпуска ACME-сертификата.
+ok=""
+for i in 1 2 3 4 5 6; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' \
+        --resolve lunalis.tech:443:127.0.0.1 \
+        --connect-timeout 8 https://lunalis.tech/api/health || true)"
+    if [ "$code" = "200" ]; then ok=1; break; fi
+    echo "  ... TLS/домен ещё не готов (HTTP $code), попытка $i/6"
+    sleep 5
+done
+if [ -n "$ok" ]; then
+    echo "OK (HTTP 200 via https://lunalis.tech, Let's Encrypt)"
 else
-    echo "FAIL — HTTP $code (ожидали 401 или 200)"
+    echo "FAIL — https://lunalis.tech/api/health не отвечает 200 (cert/DNS/Caddy)"
     exit 1
 fi
 
