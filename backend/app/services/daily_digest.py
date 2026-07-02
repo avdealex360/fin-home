@@ -9,7 +9,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.models import Category, Transaction
-from app.services.ai.router import complete_with_fallback
+from app.services.ai.router import complete_with_fallback, provider_label
 from app.services.settings_store import get_setting, set_setting
 
 STATIC_TIPS = [
@@ -80,7 +80,7 @@ def _stats_text(stats: dict) -> str:
     return "\n".join(lines)
 
 
-def _build_tip(db: Session, stats: dict) -> str:
+def _build_tip(db: Session, stats: dict) -> tuple[str, str | None]:
     mode = random.choice(["stats", "literacy"])
     if mode == "stats":
         system = "Ты — дружелюбный финансовый помощник. Дай один короткий персональный совет (1–2 предложения) по цифрам семьи. Без вступлений."
@@ -92,20 +92,36 @@ def _build_tip(db: Session, stats: dict) -> str:
     else:
         system = "Ты — финансовый просветитель. Дай один короткий совет по финансовой грамотности (1–2 предложения) на случайную тему. Без вступлений."
         user = "Тема на твой выбор: подушка, проценты, импульсивные траты, правило 50/30/20, подписки."
-    tip = complete_with_fallback(db, system, user)
-    return tip.strip() if tip else random.choice(STATIC_TIPS)
+    tip, provider = complete_with_fallback(db, system, user)
+    if tip:
+        return tip.strip(), provider
+    return random.choice(STATIC_TIPS), None
+
+
+def _format_digest(stats_text: str, tip_text: str, tip_provider: str | None) -> str:
+    footer = f"\n🧠 {provider_label(tip_provider)}" if tip_provider else ""
+    return f"{stats_text}\n\n💡 {tip_text}{footer}"
 
 
 def get_or_build(db: Session, today: date | None = None) -> str:
     today = today or date.today()
     key = f"digest.{today.isoformat()}"
-    cached = get_setting(db, key, "")
-    if cached:
-        data = json.loads(cached)
-        return f"{data['stats_text']}\n\n💡 {data['tip_text']}"
 
     stats = _collect_stats(db, today)
     stats_text = _stats_text(stats)
-    tip_text = _build_tip(db, stats)
-    set_setting(db, key, json.dumps({"stats_text": stats_text, "tip_text": tip_text}, ensure_ascii=False))
-    return f"{stats_text}\n\n💡 {tip_text}"
+
+    cached = get_setting(db, key, "")
+    if cached:
+        data = json.loads(cached)
+        return _format_digest(stats_text, data["tip_text"], data.get("tip_provider"))
+
+    tip_text, tip_provider = _build_tip(db, stats)
+    set_setting(
+        db,
+        key,
+        json.dumps(
+            {"tip_text": tip_text, "tip_provider": tip_provider},
+            ensure_ascii=False,
+        ),
+    )
+    return _format_digest(stats_text, tip_text, tip_provider)

@@ -30,12 +30,22 @@ def _call(token: str, method: str, payload: dict) -> dict:
     return data.get("result", {})
 
 
-def send_message(token: str, chat_id: int | str, text: str) -> None:
+def send_message(token: str, chat_id: int | str, text: str, reply_markup: dict | None = None) -> None:
     # Best-effort: log and swallow so a reply failure never breaks the webhook.
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
-        _call(token, "sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+        _call(token, "sendMessage", payload)
     except TgError as e:
         log.warning("sendMessage failed: %s", e)
+
+
+def answer_callback_query(token: str, callback_query_id: str, text: str = "") -> None:
+    try:
+        _call(token, "answerCallbackQuery", {"callback_query_id": callback_query_id, "text": text})
+    except TgError as e:
+        log.warning("answerCallbackQuery failed: %s", e)
 
 
 def get_me(token: str) -> dict:

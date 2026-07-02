@@ -36,6 +36,20 @@ def test_parse_entries_empty_raises():
         parse_entries('{"entries":[]}')
 
 
+def test_prompt_has_category_and_person_rules():
+    ctx = ParseContext(
+        categories=[{"id": 1, "name": "Продукты", "group": "needs"}],
+        users=["Леша", "Катя", "Общий"],
+        sender_name="Леша",
+        today=date(2026, 7, 2),
+        currency="RUB",
+    )
+    system, _ = build_parse_messages("корм коту 500", ctx)
+    assert "ВСЕГДА" in system
+    assert "Общее" in system
+    assert "Продукты" in system and "2026-07-02" in system
+
+
 def test_build_parse_messages_includes_categories_and_today():
     ctx = ParseContext(
         categories=[{"id": 1, "name": "Продукты", "group": "needs"}],
@@ -159,17 +173,26 @@ def test_parse_with_fallback_switches_on_failure(monkeypatch):
     good = '{"entries":[{"amount":360,"type":"expense","category":"Кофе","person":null,"date":null,"comment":null,"confidence":"high"}]}'
     providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", output=good)]
     monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
-    out = ai_router.parse_with_fallback(None, "кофе 360", _ctx())
+    out, provider = ai_router.parse_with_fallback(None, "кофе 360", _ctx())
     assert len(out) == 1 and out[0].amount == Decimal("360")
+    assert provider == "gigachat"
 
 
 def test_parse_with_fallback_all_fail_returns_empty(monkeypatch):
     providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", fail=True)]
     monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
-    assert ai_router.parse_with_fallback(None, "кофе 360", _ctx()) == []
+    entries, provider = ai_router.parse_with_fallback(None, "кофе 360", _ctx())
+    assert entries == [] and provider is None
 
 
 def test_complete_with_fallback(monkeypatch):
     providers = [_FakeProvider("yandex", fail=True), _FakeProvider("gigachat", output="tip")]
     monkeypatch.setattr(ai_router, "build_providers", lambda db: providers)
-    assert ai_router.complete_with_fallback(None, "s", "u") == "tip"
+    text, provider = ai_router.complete_with_fallback(None, "s", "u")
+    assert text == "tip" and provider == "gigachat"
+
+
+def test_provider_label():
+    assert ai_router.provider_label("yandex") == "YandexGPT"
+    assert ai_router.provider_label("gigachat") == "GigaChat"
+    assert ai_router.provider_label(None) == ""

@@ -35,21 +35,30 @@ def build_providers(db: Session) -> list[AiProvider]:
     return [available[n] for n in order if n in available]
 
 
-def complete_with_fallback(db: Session, system: str, user: str) -> str | None:
+_PROVIDER_LABELS = {"yandex": "YandexGPT", "gigachat": "GigaChat"}
+
+
+def provider_label(name: str | None) -> str:
+    return _PROVIDER_LABELS.get(name or "", name or "")
+
+
+def complete_with_fallback(db: Session, system: str, user: str) -> tuple[str | None, str | None]:
     for provider in build_providers(db):
         try:
-            return provider.complete(system, user)
+            return provider.complete(system, user), provider.name
         except AiError as e:
             log.warning("provider %s failed: %s", provider.name, e)
-    return None
+    return None, None
 
 
-def parse_with_fallback(db: Session, text: str, ctx: ParseContext) -> list[ParsedEntry]:
+def parse_with_fallback(
+    db: Session, text: str, ctx: ParseContext
+) -> tuple[list[ParsedEntry], str | None]:
     system, user = build_parse_messages(text, ctx)
     for provider in build_providers(db):
         try:
             raw = provider.complete(system, user)
-            return parse_entries(raw)
+            return parse_entries(raw), provider.name
         except AiError as e:
             log.warning("provider %s parse failed: %s", provider.name, e)
-    return []
+    return [], None
