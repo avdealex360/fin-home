@@ -1,19 +1,13 @@
-# HTTPS по IP: свой сертификат (scripts/gen-certs.sh).
-# tls internal на :443 без домена ломает TLS handshake.
 {
 	servers {
 		protocols h1 h2
 	}
 }
 
-:443 {
-	tls /certs/cert.pem /certs/key.pem
-
-	# Авторизация — на уровне приложения (экран логина, сессия в cookie),
-	# см. backend/app/api/auth.py. APP_USER/APP_PASSWORD_HASH там же в .env.
+lunalis.tech {
 	reverse_proxy budget-app:8000
 }
 
 :80 {
-	redir https://{host}{uri} permanent
+	redir https://lunalis.tech{uri} permanent
 }
