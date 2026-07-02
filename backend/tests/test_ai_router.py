@@ -48,3 +48,32 @@ def test_build_parse_messages_includes_categories_and_today():
     assert "Продукты" in system
     assert "2026-07-02" in system
     assert "кофе 360" in user
+
+
+import httpx
+from app.services.ai.yandex import YandexProvider
+
+
+def _mock_transport(handler):
+    return httpx.MockTransport(handler)
+
+
+def test_yandex_complete_success(monkeypatch):
+    def handler(request):
+        assert "Api-Key testkey" == request.headers["Authorization"]
+        body = {"result": {"alternatives": [{"message": {"text": "hello"}}]}}
+        return httpx.Response(200, json=body)
+
+    p = YandexProvider("testkey", "folder1")
+    monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
+    assert p.complete("sys", "usr") == "hello"
+
+
+def test_yandex_complete_quota_raises(monkeypatch):
+    def handler(request):
+        return httpx.Response(429, json={"error": "quota"})
+
+    p = YandexProvider("testkey", "folder1")
+    monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
+    with pytest.raises(AiError):
+        p.complete("sys", "usr")
