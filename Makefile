@@ -106,6 +106,9 @@ prod-logs: ## Логи prod-стека (follow)
 prod-logs-app: ## Логи только budget-app (без Caddy)
 	$(COMPOSE_PROD) logs -f budget-app
 
+prod-tail-ai: ## AI/TG лог-файл на хосте (data volume)
+	tail -f data/ai-debug.log
+
 prod-ps: ## Статус prod-контейнеров
 	$(COMPOSE_PROD) ps
 

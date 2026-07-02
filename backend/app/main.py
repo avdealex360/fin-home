@@ -31,7 +31,6 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_app_logging()
     run_migrations()
     db = SessionLocal()
     try:
@@ -40,6 +39,7 @@ async def lifespan(app: FastAPI):
         ensure_common_user(db)
     finally:
         db.close()
+    configure_app_logging()
     yield
 
 
