@@ -3,11 +3,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from types import SimpleNamespace
 import bcrypt
 
 import app.models  # noqa: F401 — registers models with Base.metadata
 from app.db import Base, get_db
+from app.main import app
 from app.services.settings_store import get_secret, set_secret, secret_is_set, mask_secret
 from app.services import auth as auth_module
 
@@ -21,7 +23,13 @@ def _authenticate(client) -> None:
 
 @pytest.fixture
 def db():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    # StaticPool: TestClient dispatches requests via a worker thread, and a plain
+    # in-memory SQLite DB is per-connection — without StaticPool the endpoint would
+    # see a different, empty in-memory DB than the one this fixture seeded. Same
+    # fix as tests/test_telegram_bot.py's db fixture.
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
     yield session
@@ -62,3 +70,29 @@ def test_secret_excluded_from_export(db):
     assert "secret.tg_bot_token" not in filtered_settings
     # But verify it's still in the DB
     assert get_secret(db, "secret.tg_bot_token") == "supersecret"
+
+
+def test_integrations_get_reports_flags_not_raw(db):
+    set_secret(db, "secret.yandex_api_key", "yakey")
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+    _authenticate(client)
+    r = client.get("/api/settings/integrations")
+    app.dependency_overrides.clear()
+    body = r.json()
+    assert body["yandex_api_key"] is True
+    assert body["gigachat_auth_key"] is False
+    assert "yakey" not in json.dumps(body)
+
+
+def test_integrations_post_saves_nonempty(db):
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+    _authenticate(client)
+    client.post("/api/settings/integrations", json={
+        "yandex_api_key": "newkey", "yandex_folder_id": "", "ai_primary_provider": "gigachat",
+    })
+    app.dependency_overrides.clear()
+    assert get_secret(db, "secret.yandex_api_key") == "newkey"
+    from app.services.settings_store import get_setting
+    assert get_setting(db, "ai_primary_provider") == "gigachat"
