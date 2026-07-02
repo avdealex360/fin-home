@@ -15,6 +15,7 @@ from app.api import (
     meta,
     plan,
     settings,
+    telegram,
     transactions,
 )
 from app.db import SessionLocal
@@ -57,7 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_PUBLIC_API_PREFIXES = ("/api/auth", "/api/health", "/api/docs", "/api/openapi.json")
+_PUBLIC_API_PREFIXES = ("/api/auth", "/api/health", "/api/docs", "/api/openapi.json", "/api/tg/webhook")
 
 
 @app.middleware("http")
@@ -95,6 +96,7 @@ for router in (
     deposit.router,
     analytics.router,
     settings.router,
+    telegram.router,
 ):
     app.include_router(router)
 

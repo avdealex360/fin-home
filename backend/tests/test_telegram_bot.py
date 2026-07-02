@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 import pytest
 import httpx
 
@@ -12,7 +13,13 @@ from app.services.tg_client import TgError
 
 @pytest.fixture
 def db():
-    engine = create_engine("sqlite:///:memory:")
+    # StaticPool: a plain in-memory SQLite DB is per-connection, and TestClient-driven
+    # requests (see test_webhook_wrong_secret_returns_403) can check out a different
+    # connection from the pool than the one the fixture created — StaticPool pins
+    # everything to a single shared connection so the override sees the same data.
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
     yield session
@@ -45,3 +52,57 @@ def test_get_me_error_raises(monkeypatch):
                         lambda: httpx.Client(transport=httpx.MockTransport(handler)))
     with pytest.raises(TgError):
         tg_client.get_me("bad")
+
+
+from decimal import Decimal
+from datetime import date
+from app.models import Category, Transaction
+from app.services import telegram_bot
+from app.services.ai.base import ParsedEntry
+
+
+def _seed_people_and_cats(db):
+    db.add_all([
+        Category(name="Кофе", group="wants", sort_order=1),
+        AppUser(name="Леша", telegram_id="111"),
+    ])
+    db.commit()
+
+
+def test_handle_update_writes_transaction(db, monkeypatch):
+    _seed_people_and_cats(db)
+    monkeypatch.setattr(telegram_bot, "get_secret", lambda d, k, default="": "tok" if "token" in k else "wh")
+    monkeypatch.setattr(
+        telegram_bot, "parse_with_fallback",
+        lambda d, text, ctx: [ParsedEntry(Decimal("360"), "expense", "Кофе", None, None, "кофе", "high")],
+    )
+    sent = []
+    monkeypatch.setattr(telegram_bot, "send_message", lambda token, chat_id, text: sent.append(text))
+
+    update = {"message": {"text": "кофе 360", "chat": {"id": 111}, "from": {"id": 111}}}
+    telegram_bot.handle_update(db, update)
+
+    assert db.query(Transaction).count() == 1
+    assert sent and "360" in sent[0]
+
+
+def test_handle_update_rejects_unknown_sender(db, monkeypatch):
+    _seed_people_and_cats(db)
+    monkeypatch.setattr(telegram_bot, "get_secret", lambda d, k, default="": "tok")
+    sent = []
+    monkeypatch.setattr(telegram_bot, "send_message", lambda token, chat_id, text: sent.append(text))
+    update = {"message": {"text": "кофе 360", "chat": {"id": 999}, "from": {"id": 999}}}
+    telegram_bot.handle_update(db, update)
+    assert db.query(Transaction).count() == 0
+
+
+def test_webhook_wrong_secret_returns_403(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.db import get_db
+    monkeypatch.setattr(telegram_bot, "get_secret", lambda d, k, default="": "rightsecret")
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+    r = client.post("/api/tg/webhook/wrongsecret", json={})
+    app.dependency_overrides.clear()
+    assert r.status_code == 403
