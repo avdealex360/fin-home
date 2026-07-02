@@ -77,3 +77,36 @@ def test_yandex_complete_quota_raises(monkeypatch):
     monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
     with pytest.raises(AiError):
         p.complete("sys", "usr")
+
+
+from app.services.ai.gigachat import GigaChatProvider
+
+
+def test_gigachat_oauth_then_complete(monkeypatch):
+    calls = {"oauth": 0}
+
+    def handler(request):
+        if request.url.path.endswith("/oauth"):
+            calls["oauth"] += 1
+            assert request.headers["Authorization"] == "Basic authkey"
+            return httpx.Response(200, json={"access_token": "tok", "expires_at": 9999999999000})
+        assert request.headers["Authorization"] == "Bearer tok"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "answer"}}]})
+
+    p = GigaChatProvider("authkey")
+    monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
+    assert p.complete("sys", "usr") == "answer"
+    p.complete("sys", "usr")  # token cached — no second oauth call
+    assert calls["oauth"] == 1
+
+
+def test_gigachat_quota_raises(monkeypatch):
+    def handler(request):
+        if request.url.path.endswith("/oauth"):
+            return httpx.Response(200, json={"access_token": "tok", "expires_at": 9999999999000})
+        return httpx.Response(429, json={})
+
+    p = GigaChatProvider("authkey")
+    monkeypatch.setattr(p, "_client_factory", lambda: httpx.Client(transport=_mock_transport(handler)))
+    with pytest.raises(AiError):
+        p.complete("sys", "usr")
