@@ -119,7 +119,7 @@ def _handle_text(db, token, chat_id, tg_id, sender, text) -> None:
         send_message(token, chat_id, "Не смог разобрать 🤔 Попробуй иначе: «кофе 360, магазин 1560».")
         return
 
-    txs = create_transactions(db, entries, sender)
+    txs = create_transactions(db, entries, sender, source_text=text)
     _LAST_BATCH[tg_id] = [t.id for t in txs]
 
     total = sum(t.amount for t in txs)

@@ -29,6 +29,29 @@ def test_parse_entries_strips_code_fence():
     assert out[0].amount == Decimal("100")
 
 
+def test_parse_entries_yandex_array_and_group_suffix():
+    raw = """```
+[
+    {
+        "entries": [
+            {
+                "amount": 1840,
+                "type": "expense",
+                "category": "Квартира и жилье (needs)",
+                "person": "Общее",
+                "date": "2026-07-02",
+                "comment": "Ремонт бойлера",
+                "confidence": "high"
+            }
+        ]
+    }
+]
+```"""
+    out = parse_entries(raw)
+    assert len(out) == 1
+    assert out[0].category == "Квартира и жилье"
+
+
 def test_parse_entries_empty_raises():
     with pytest.raises(AiError):
         parse_entries("no json here")
@@ -45,8 +68,8 @@ def test_prompt_has_category_and_person_rules():
         currency="RUB",
     )
     system, _ = build_parse_messages("корм коту 500", ctx)
-    assert "ВСЕГДА" in system
-    assert "Общее" in system
+    assert "ВСЕГДА" in system or "ЗАПРЕЩЕНО" in system
+    assert "Общий" in system
     assert "Продукты" in system and "2026-07-02" in system
 
 

@@ -179,6 +179,9 @@
               {#if cat}<i class="ti {cat.icon}" style="color:{cat.color}"></i>{/if}
               {t.category_name ?? (t.type === 'income' ? 'Доход' : '—')}
             </span>
+            {#if t.comment}
+              <span class="tx-comment muted">{t.comment}</span>
+            {/if}
             <span class="tx-meta muted">{formatDate(t.date)}{t.user_name ? ` · ${t.user_name}` : ''}</span>
             <span class="tx-amt num" class:income={t.type === 'income'}>
               {t.type === 'income' ? '+' : '−'}{money(t.amount)} ₽
@@ -227,8 +230,9 @@
   .tx-wrap { display: flex; gap: var(--space-2); align-items: stretch; }
   .tx { flex: 1; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 0; background: var(--bg-surface); border: none; border-radius: var(--radius-md); padding: var(--space-3); text-align: left; }
   .tx-cat { font-size: var(--text-base); display: flex; align-items: center; gap: 6px; }
+  .tx-comment { font-size: var(--text-sm); grid-column: 1; }
   .tx-meta { font-size: var(--text-xs); }
-  .tx-amt { grid-row: 1 / 3; grid-column: 2; align-self: center; }
+  .tx-amt { grid-row: 1 / -1; grid-column: 2; align-self: center; }
   .tx-amt.income { color: var(--green); }
   .tx-actions { display: flex; flex-direction: column; gap: var(--space-1); }
   .tx-del { background: var(--red-bg); color: var(--red); border: none; border-radius: var(--radius-md); width: 56px; flex: 1; }

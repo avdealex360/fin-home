@@ -67,3 +67,43 @@ def test_resolve_user_uppercase_keyword_common(db):
     sender = db.query(AppUser).filter_by(name="Леша").first()
     common = db.query(AppUser).filter_by(name="Общий").first()
     assert tx_resolver.resolve_user_id(db, "ОБЩЕЕ", sender) == common.id
+
+
+def test_resolve_category_yandex_group_suffix(db):
+    db.add(Category(name="Квартира и жилье", group="needs", sort_order=10))
+    db.commit()
+    assert tx_resolver.resolve_category_id(db, "Квартира и жилье (needs)") is not None
+
+
+def test_create_transactions_fills_comment_from_source_when_ai_omits(db):
+    sender = db.query(AppUser).filter_by(name="Леша").first()
+    source = "Ремонт бойлера 1840 Табачки для кальяна 3037"
+    entries = [
+        ParsedEntry(Decimal("1840"), "expense", "Продукты и быт", None, None, None, "high"),
+        ParsedEntry(Decimal("3037"), "expense", "Кофе", None, None, None, "high"),
+    ]
+    txs = tx_resolver.create_transactions(db, entries, sender, source_text=source)
+    assert txs[0].comment == "Ремонт бойлера"
+    assert txs[1].comment == "Табачки для кальяна"
+
+
+def test_resolve_category_group_token_with_source_hint(db):
+    """GigaChat sometimes returns needs/wants instead of category names."""
+    db.add_all([
+        Category(name="Квартира и жилье", group="needs", sort_order=10),
+        Category(name="Рестораны и доставка", group="wants", sort_order=11),
+        Category(name="Связь и интернет", group="needs", sort_order=12),
+    ])
+    db.commit()
+    source = "Ремонт бойлера 1840 Табачки для кальяна 3037, Яндекс облако 500"
+    sender = db.query(AppUser).filter_by(name="Леша").first()
+    entries = [
+        ParsedEntry(Decimal("1840"), "expense", "needs", "Общий", None, None, "high"),
+        ParsedEntry(Decimal("3037"), "expense", "wants", "Леша", None, None, "high"),
+        ParsedEntry(Decimal("500"), "expense", "needs", "Общий", None, "Яндекс облако", "high"),
+    ]
+    txs = tx_resolver.create_transactions(db, entries, sender, source_text=source)
+    names = {db.get(Category, t.category_id).name for t in txs if t.category_id}
+    assert "Квартира и жилье" in names
+    assert "Рестораны и доставка" in names
+    assert "Связь и интернет" in names
