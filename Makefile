@@ -103,6 +103,9 @@ prod-rebuild: setup ## Пересобрать prod-стек
 prod-logs: ## Логи prod-стека (follow)
 	$(COMPOSE_PROD) logs -f
 
+prod-logs-app: ## Логи только budget-app (без Caddy)
+	$(COMPOSE_PROD) logs -f budget-app
+
 prod-ps: ## Статус prod-контейнеров
 	$(COMPOSE_PROD) ps
 

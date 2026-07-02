@@ -18,14 +18,6 @@ from app.services.ai.yandex import YandexProvider
 from app.services.settings_store import get_secret, get_setting
 
 log = logging.getLogger("ai.router")
-log.setLevel(logging.INFO)
-if not log.handlers:
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
-    log.addHandler(_handler)
-    log.propagate = True
-
-
 def _log_request(kind: str, provider: str, attempt: int, total: int, system: str, user: str) -> None:
     log.info(
         "ai.request kind=%s provider=%s attempt=%d/%d\n"

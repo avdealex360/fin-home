@@ -19,6 +19,7 @@ from app.api import (
     transactions,
 )
 from app.db import SessionLocal
+from app.logging_config import configure_app_logging
 from app.migrations import run_migrations
 from app.seed import ensure_common_user, ensure_savings_category, ensure_settings
 from app.services.auth import SESSION_COOKIE, is_valid_session
@@ -30,6 +31,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_app_logging()
     run_migrations()
     db = SessionLocal()
     try:

@@ -96,6 +96,7 @@ def handle_update(db: Session, update: dict) -> None:
         if not text:
             return
 
+        log.info("telegram.incoming tg_id=%s text=%r", tg_id, text)
         _handle_text(db, token, chat_id, tg_id, sender, text)
     except Exception:  # webhook must never raise
         log.exception("handle_update failed")
