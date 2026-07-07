@@ -8,6 +8,13 @@ lunalis.tech {
 	reverse_proxy budget-app:8000
 }
 
+db.lunalis.tech {
+	basic_auth {
+		{$APP_USER} {$APP_PASSWORD_HASH}
+	}
+	reverse_proxy sqlite-web:8080
+}
+
 :80 {
-	redir https://lunalis.tech{uri} permanent
+	redir https://{host}{uri} permanent
 }

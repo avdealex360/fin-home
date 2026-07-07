@@ -13,3 +13,14 @@ services:
     env_file: .env
     mem_limit: 256m
     cpus: "0.3"
+
+  sqlite-web:
+    image: coleifer/sqlite-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./data:/data
+    command: ["sqlite_web", "/data/budget.db", "--host", "0.0.0.0"]
+    mem_limit: 128m
+    cpus: "0.2"

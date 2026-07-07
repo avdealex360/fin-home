@@ -10,7 +10,7 @@ PYTHON ?= python3
 UVICORN ?= uvicorn
 
 .PHONY: help setup install dev test \
-        up down restart rebuild logs ps shell \
+        up down restart rebuild logs ps shell db-ui \
         prod-up prod-down prod-restart prod-rebuild prod-rebuild-nocache prod-logs prod-ps prod-shell \
         prod-migrate prod-migrate-stamp prod-backup prod-check prod-caddy-reset prod-certs prod-verify prod-tail-ai \
         migrate migrate-local migrate-stamp \
@@ -73,6 +73,9 @@ ps: ## Статус локальных контейнеров
 
 shell: ## Shell в контейнере budget-app (локально)
 	$(COMPOSE_LOCAL) exec budget-app bash
+
+db-ui: ## Веб-интерфейс SQLite (http://127.0.0.1:8081)
+	@echo "sqlite-web: http://127.0.0.1:8081"
 
 migrate: ## Миграции в Docker (локальный compose)
 	$(COMPOSE_LOCAL) exec -T budget-app python -c "from app.migrations import run_migrations; run_migrations()"

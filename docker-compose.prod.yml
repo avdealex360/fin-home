@@ -4,6 +4,11 @@ services:
     expose:
       - "8000"
 
+  sqlite-web:
+    ports: !reset []
+    expose:
+      - "8080"
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -20,6 +25,7 @@ services:
       - caddy_config:/config
     depends_on:
       - budget-app
+      - sqlite-web
 
 volumes:
   caddy_data:
