@@ -34,11 +34,17 @@ frontend/         — Svelte 5 + Vite PWA
     lib/format.ts  — money / dates / month names
     lib/components/ — BottomSheet, Toast, MoneyInput, ProgressBar, TxForm,
                       AllocationSheet, Chart, BottomNav, Onboarding, Login
-    routes/        — Dashboard, Plan, Deposit (standalone calculator, linked from More),
-                      Analytics, More
+    routes/        — Dashboard, Transactions (full history: multi-select/group filters,
+                      period presets, day/month grouping with totals), Plan,
+                      Deposit (standalone calculator, linked from More), Analytics, More, Faq
 Dockerfile        — multi-stage: builds SPA → backend image serves API + static_spa/
-Caddyfile         — TLS + reverse_proxy to budget-app:8000 (auth is app-level, not Caddy)
+Caddyfile         — TLS + reverse_proxy to budget-app:8000 (auth is app-level, not Caddy);
+                    also proxies db.lunalis.tech → sqlite-web behind basic_auth (same creds)
 ```
+
+**sqlite-web**: a lightweight SQLite admin UI, added as a `docker-compose.yml` service.
+Locally on `127.0.0.1:8081` (`make db-ui`); in prod not exposed directly — only reachable
+through Caddy at `db.lunalis.tech`, gated by the same `APP_USER`/`APP_PASSWORD_HASH`.
 
 ## Commands
 
@@ -47,6 +53,7 @@ make install     # backend venv (uv) + frontend npm install
 make dev-api     # backend hot-reload → :8000
 make dev-web     # Vite dev → :5173 (proxies /api to :8000)   [run in a 2nd terminal]
 make test        # backend pytest
+make db-ui       # sqlite-web (SQLite admin UI) → :8081, local Docker only
 
 # Production (Docker, on VPS)
 make hash-password p=secret   # bcrypt hash for the app login (.env APP_PASSWORD_HASH)
@@ -80,8 +87,11 @@ Alembic migrations in `backend/alembic/versions/`; `app/migrations.py` runs `upg
 Webhook-based bot (`app/api/telegram.py` → `POST /api/tg/webhook/{secret}`, public,
 excluded from session auth). Free-form text is parsed by `services/ai/` (YandexGPT
 → GigaChat fallback via `router.py`) into `ParsedEntry`, resolved to categories/
-people by `tx_resolver.py`, written immediately. `/stats` returns a day-cached
-digest (`services/daily_digest.py`) with a rotating AI/static tip. Keys live in the
+people by `tx_resolver.py`, written immediately; the confirmation reply shows who
+each operation was attributed to (`AppUser.name`, e.g. «· Общий»). `/stats` returns
+an hour-cached digest (`services/daily_digest.py`) with a rotating AI/static tip —
+the AI tip runs at a higher temperature (0.9, vs 0.3 for parsing) across several
+modes/topics/styles for variety, and re-rolls every hour. Keys live in the
 `Setting` table under `secret.*` (excluded from export, masked in GET), editable in
 the app's «Интеграции» screen. People link to Telegram via `AppUser.telegram_id`
 (also the access whitelist). Setup guide: `docs/telegram-bot-setup.md`.

@@ -126,8 +126,10 @@ def _handle_text(db, token, chat_id, tg_id, sender, text) -> None:
     lines = [f"✅ {len(txs)} операц. на <b>{float(total):,.0f}".replace(",", " ") + " ₽</b>"]
     for t, e in zip(txs, entries):
         cat = db.get(Category, t.category_id).name if t.category_id else "без категории"
+        person = db.get(AppUser, t.user_id).name if t.user_id else None
         warn = " ⚠️ проверь" if (e.confidence != "high" or t.category_id is None) else ""
-        lines.append(f"• {float(t.amount):,.0f}".replace(",", " ") + f" ₽ — {cat}{warn}")
+        who = f" · {person}" if person else ""
+        lines.append(f"• {float(t.amount):,.0f}".replace(",", " ") + f" ₽ — {cat}{who}{warn}")
     if provider:
         lines.append(f"🧠 {provider_label(provider)}")
     send_message(token, chat_id, "\n".join(lines), reply_markup=_COMMANDS_KB)

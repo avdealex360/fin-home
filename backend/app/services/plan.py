@@ -109,6 +109,25 @@ class PlanService:
             db.commit()
 
     @staticmethod
+    def spent_by_category(db: Session, year: int, month: int) -> dict[int, Decimal]:
+        from sqlalchemy import extract
+
+        from app.models import Transaction
+
+        rows = (
+            db.query(Transaction.category_id, func.sum(Transaction.amount))
+            .filter(
+                Transaction.type == "expense",
+                Transaction.category_id.isnot(None),
+                extract("year", Transaction.date) == year,
+                extract("month", Transaction.date) == month,
+            )
+            .group_by(Transaction.category_id)
+            .all()
+        )
+        return {cat_id: amount for cat_id, amount in rows}
+
+    @staticmethod
     def meter_503020(db: Session, year: int, month: int) -> dict:
         from app.models import Category, CategoryLimit
 

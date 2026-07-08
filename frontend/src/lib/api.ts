@@ -39,6 +39,8 @@ export interface Transaction {
 export interface TransactionListResponse {
   items: Transaction[]
   total: number
+  day_totals: Record<string, number>
+  month_totals: Record<string, number>
 }
 
 export interface TransactionListParams {
@@ -47,7 +49,8 @@ export interface TransactionListParams {
   date_from?: string
   date_to?: string
   type?: string
-  category_id?: number
+  category_ids?: number[]
+  group?: string
   user_id?: number
   sort_by?: 'date' | 'amount'
   sort_dir?: 'asc' | 'desc'
@@ -232,7 +235,12 @@ export const api = {
   transactionsList: (params: TransactionListParams) => {
     const p = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+      if (v === undefined || v === null || v === '') continue
+      if (Array.isArray(v)) {
+        for (const item of v) p.append(k, String(item))
+      } else {
+        p.set(k, String(v))
+      }
     }
     return req<TransactionListResponse>('GET', `/transactions?${p}`)
   },

@@ -136,7 +136,8 @@ def planned_debt_dict(p: PlannedDebtPayment) -> dict:
     }
 
 
-def plan_dict(p: MonthlyPlan) -> dict:
+def plan_dict(p: MonthlyPlan, spent: dict | None = None) -> dict:
+    spent = spent or {}
     return {
         "id": p.id,
         "year": p.year,
@@ -150,6 +151,7 @@ def plan_dict(p: MonthlyPlan) -> dict:
                 "category_id": l.category_id,
                 "limit_amount": float(l.limit_amount),
                 "carried_over": float(l.carried_over or 0),
+                "spent": float(spent.get(l.category_id, 0)),
             }
             for l in p.limits
         ],

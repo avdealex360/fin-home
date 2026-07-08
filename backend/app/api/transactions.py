@@ -5,13 +5,13 @@ from datetime import date
 date_type = date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import extract
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Transaction
+from app.models import Category, Transaction
 from app.serializers import transaction_dict
 from app.services.allocation import get_unallocated_for_tx
 
@@ -37,6 +37,8 @@ def list_transactions(
     date_to: date_type | None = None,
     type: str | None = None,
     category_id: int | None = None,
+    category_ids: list[int] | None = Query(None),
+    group: str | None = None,
     user_id: int | None = None,
     sort_by: str = "date",
     sort_dir: str = "desc",
@@ -55,12 +57,34 @@ def list_transactions(
         q = q.filter(Transaction.date <= date_to)
     if type:
         q = q.filter(Transaction.type == type)
-    if category_id:
+    if category_ids:
+        q = q.filter(Transaction.category_id.in_(category_ids))
+    elif category_id:
         q = q.filter(Transaction.category_id == category_id)
+    if group:
+        q = q.join(Category, Transaction.category_id == Category.id).filter(Category.group == group)
     if user_id:
         q = q.filter(Transaction.user_id == user_id)
 
     total = q.count()
+
+    # Expense totals per day/month over the FULL filtered set (not just this page),
+    # so a header total stays correct even when its group spans multiple pages.
+    expense_q = q.filter(Transaction.type == "expense")
+    day_totals = {
+        d.isoformat(): float(s)
+        for d, s in expense_q.with_entities(Transaction.date, func.sum(Transaction.amount))
+        .group_by(Transaction.date)
+        .all()
+    }
+    month_totals = {
+        f"{int(y)}-{int(m):02d}": float(s)
+        for y, m, s in expense_q.with_entities(
+            extract("year", Transaction.date), extract("month", Transaction.date), func.sum(Transaction.amount)
+        )
+        .group_by(extract("year", Transaction.date), extract("month", Transaction.date))
+        .all()
+    }
 
     column = _SORT_COLUMNS.get(sort_by, Transaction.date)
     order = column.asc() if sort_dir == "asc" else column.desc()
@@ -70,7 +94,12 @@ def list_transactions(
         .limit(limit)
         .all()
     )
-    return {"items": [transaction_dict(t) for t in rows], "total": total}
+    return {
+        "items": [transaction_dict(t) for t in rows],
+        "total": total,
+        "day_totals": day_totals,
+        "month_totals": month_totals,
+    }
 
 
 @router.post("")

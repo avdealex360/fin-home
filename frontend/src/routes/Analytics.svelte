@@ -121,12 +121,11 @@
       <div class="section-label">План vs Факт</div>
       <div class="card stack">
         {#each data.plan_vs_fact.filter((c: any) => c.fact > 0 || c.plan > 0) as c}
-          <div class="row">
-            <span>{c.category_name}</span>
-            <span class="num muted">{money(c.fact)} / {money(c.plan)}
-              <span class={c.diff > 0 ? 'over' : 'under'}>
-                {c.diff > 0 ? '+' : ''}{money(c.diff)}
-              </span>
+          <div class="pvf-row">
+            <span class="pvf-name">{c.category_name}</span>
+            <span class="pvf-nums num">
+              <span class="pvf-fp muted">{money(c.fact)} / {money(c.plan)}</span>
+              <span class={c.diff > 0 ? 'over' : 'under'}>{c.diff > 0 ? '+' : ''}{money(c.diff)}</span>
             </span>
           </div>
         {/each}
@@ -153,6 +152,10 @@
   .over { color: var(--red); }
   .under { color: var(--green); }
   .ok { color: var(--green); }
+  .pvf-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-2); }
+  .pvf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pvf-nums { flex: 0 0 auto; margin-left: auto; white-space: nowrap; display: flex; align-items: baseline; gap: 6px; font-size: var(--text-sm); }
+  .pvf-fp { letter-spacing: -0.02em; }
   .pbar { margin-top: 4px; }
   .target { font-size: 0.75rem; }
   .small { font-size: 0.75rem; margin-top: 2px; }

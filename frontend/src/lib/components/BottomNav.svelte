@@ -8,6 +8,7 @@
 
   const items = [
     { id: 'dashboard', label: 'Главная', icon: 'ti-home' },
+    { id: 'transactions', label: 'Операции', icon: 'ti-list' },
     { id: 'plan', label: 'План', icon: 'ti-calendar' },
     { id: 'add', label: 'Добавить', icon: 'ti-plus' },
     { id: 'analytics', label: 'Аналитика', icon: 'ti-chart-bar' },

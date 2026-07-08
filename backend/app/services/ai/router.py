@@ -41,11 +41,13 @@ def _log_failure(kind: str, provider: str, elapsed_ms: float | None, error: str,
     trace_block(f"ai.failed kind={kind} provider={provider} elapsed_ms={ms}", **sections)
 
 
-def _complete_logged(provider: AiProvider, kind: str, attempt: int, total: int, system: str, user: str) -> str:
+def _complete_logged(
+    provider: AiProvider, kind: str, attempt: int, total: int, system: str, user: str, temperature: float = 0.3
+) -> str:
     _log_request(kind, provider.name, attempt, total, system, user)
     t0 = time.monotonic()
     try:
-        raw = provider.complete(system, user)
+        raw = provider.complete(system, user, temperature)
     except AiError as e:
         elapsed_ms = (time.monotonic() - t0) * 1000
         _log_failure(kind, provider.name, elapsed_ms, str(e))
@@ -78,12 +80,14 @@ def provider_label(name: str | None) -> str:
     return _PROVIDER_LABELS.get(name or "", name or "")
 
 
-def complete_with_fallback(db: Session, system: str, user: str) -> tuple[str | None, str | None]:
+def complete_with_fallback(
+    db: Session, system: str, user: str, temperature: float = 0.3
+) -> tuple[str | None, str | None]:
     providers = build_providers(db)
     total = len(providers)
     for attempt, provider in enumerate(providers, 1):
         try:
-            raw = _complete_logged(provider, "complete", attempt, total, system, user)
+            raw = _complete_logged(provider, "complete", attempt, total, system, user, temperature)
             return raw, provider.name
         except AiError:
             continue

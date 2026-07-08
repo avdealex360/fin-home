@@ -46,11 +46,11 @@ class GigaChatProvider:
         self._token_exp = data.get("expires_at", 0) / 1000 or (time.time() + 1500)
         return self._token
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str, temperature: float = 0.3) -> str:
         token = self._ensure_token()
         payload = {
             "model": "GigaChat",
-            "temperature": 0.3,
+            "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

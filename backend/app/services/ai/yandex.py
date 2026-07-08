@@ -18,10 +18,10 @@ class YandexProvider:
     def _client_factory(self) -> httpx.Client:
         return httpx.Client(timeout=_TIMEOUT)
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str, temperature: float = 0.3) -> str:
         payload = {
             "modelUri": f"gpt://{self.folder_id}/yandexgpt-lite",
-            "completionOptions": {"temperature": 0.3, "maxTokens": 2000},
+            "completionOptions": {"temperature": temperature, "maxTokens": 2000},
             "messages": [
                 {"role": "system", "text": system},
                 {"role": "user", "text": user},

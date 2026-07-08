@@ -10,6 +10,7 @@
   let debts = $state<DebtSummary[]>([])
   let income = $state(0)
   let limits = $state<Record<number, number>>({})
+  let spent = $state<Record<number, number>>({})
   let saving = $state(false)
   let meter = $state<Record<string, { allocated: number; target: number }>>({})
 
@@ -35,11 +36,14 @@
     income = p.expected_income
     meter = m
     const lm: Record<number, number> = {}
+    const sp: Record<number, number> = {}
     for (const c of categories) {
       const l = p.limits?.find((x: any) => x.category_id === c.id)
       lm[c.id] = l ? l.limit_amount + (l.carried_over || 0) : 0
+      sp[c.id] = l ? l.spent : 0
     }
     limits = lm
+    spent = sp
   }
 
   async function loadMeter() {
@@ -184,7 +188,13 @@
             <div class="grp">{groupLabel[grp]}</div>
             {#each cats as c}
               <div class="limit-row">
-                <span class="limit-name"><i class="ti {c.icon}" style="color:{c.color}"></i> {c.name}</span>
+                <span class="limit-name">
+                  <i class="ti {c.icon}" style="color:{c.color}"></i>
+                  <span class="limit-name-text">
+                    {c.name}
+                    {#if spent[c.id] > 0}<span class="limit-spent muted">потрачено {money(spent[c.id])} ₽</span>{/if}
+                  </span>
+                </span>
                 <input
                   class="input num limit-input"
                   inputmode="numeric"
@@ -272,8 +282,10 @@
 <style>
   .grp { font-size: var(--text-sm); color: var(--blue); font-weight: 600; margin-top: var(--space-2); }
   .limit-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-  .limit-name { font-size: var(--text-sm); display: flex; align-items: center; gap: 6px; }
-  .limit-name i { font-size: 18px; flex-shrink: 0; line-height: 1; }
+  .limit-name { font-size: var(--text-sm); display: flex; align-items: flex-start; gap: 6px; }
+  .limit-name i { font-size: 18px; flex-shrink: 0; line-height: 1; margin-top: 1px; }
+  .limit-name-text { display: flex; flex-direction: column; gap: 1px; }
+  .limit-spent { font-size: var(--text-xs); font-weight: 400; }
   .limit-input { width: 110px; text-align: right; }
   .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
   .add-row .input { flex: 1; }

@@ -178,7 +178,7 @@ class _FakeProvider:
         self._output = output
         self._fail = fail
 
-    def complete(self, system, user):
+    def complete(self, system, user, temperature=0.3):
         if self._fail:
             raise AiError("boom")
         return self._output

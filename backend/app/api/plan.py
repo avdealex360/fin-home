@@ -41,7 +41,7 @@ class PlannedDebtBody(BaseModel):
 def get_plan(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(get_db)):
     year, month = ym
     plan = PlanService.get_or_create_plan(db, year, month)
-    return plan_dict(plan)
+    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
 
 
 @router.get("/{year}/{month}/meter")
@@ -57,7 +57,7 @@ def save_plan(
 ):
     year, month = ym
     plan = PlanService.save_plan(db, year, month, body.expected_income)
-    return plan_dict(plan)
+    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
 
 
 @router.post("/limits")
@@ -70,7 +70,7 @@ def save_limits(
     plan = PlanService.get_or_create_plan(db, year, month)
     PlanService.save_plan(db, year, month, plan.expected_income, category_limits=body.limits)
     db.refresh(plan)
-    return plan_dict(plan)
+    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
 
 
 @router.post("/planned-expense")
@@ -85,7 +85,7 @@ def add_planned_expense(
         db, plan.id, body.description, body.amount, body.category_id, body.expected_date
     )
     db.refresh(plan)
-    return plan_dict(plan)
+    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
 
 
 @router.delete("/planned-expense/{expense_id}")
@@ -104,7 +104,7 @@ def add_planned_debt(
     plan = PlanService.get_or_create_plan(db, year, month)
     PlanService.add_planned_debt_payment(db, plan.id, body.debt_id, body.amount)
     db.refresh(plan)
-    return plan_dict(plan)
+    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
 
 
 @router.delete("/planned-debt/{payment_id}")
@@ -120,4 +120,4 @@ def close(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(get_db
         plan = close_month(db, year, month)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return plan_dict(plan)
+    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
