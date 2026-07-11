@@ -1,0 +1,70 @@
+name: InstagramDeterrent
+options:
+  bundleIdPrefix: com.avdealex
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Set your Apple Developer Team ID — required for the Family Controls capability.
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  InstagramDeterrent:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.avdealex.instagramdeterrent
+        INFOPLIST_FILE: Sources/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/App/InstagramDeterrent.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - target: ShieldConfiguration
+      - target: ShieldAction
+      - target: DeviceActivityMonitor
+
+  ShieldConfiguration:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/ShieldConfiguration
+      - Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.avdealex.instagramdeterrent.shieldconfig
+        INFOPLIST_FILE: Sources/ShieldConfiguration/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/ShieldConfiguration/ShieldConfiguration.entitlements
+
+  ShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/ShieldAction
+      - Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.avdealex.instagramdeterrent.shieldaction
+        INFOPLIST_FILE: Sources/ShieldAction/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/ShieldAction/ShieldAction.entitlements
+
+  DeviceActivityMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/DeviceActivityMonitor
+      - Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.avdealex.instagramdeterrent.monitor
+        INFOPLIST_FILE: Sources/DeviceActivityMonitor/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/DeviceActivityMonitor/DeviceActivityMonitor.entitlements
