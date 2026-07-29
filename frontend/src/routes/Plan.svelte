@@ -65,24 +65,6 @@
     showToast('Лимиты сохранены')
   }
 
-  /** Spread the unallocated income across the group by the 50/30/20 rule,
-   *  proportionally to what is already set (or evenly if nothing is set). */
-  function autoDistribute() {
-    const pcts: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
-    for (const grp of ['needs', 'wants', 'savings']) {
-      const cats = categories.filter((c) => c.group === grp)
-      if (!cats.length) continue
-      const target = (income * pcts[grp]) / 100
-      const current = cats.reduce((s, c) => s + Number(limits[c.id] ?? 0), 0)
-      for (const c of cats) {
-        limits[c.id] = current > 0
-          ? Math.round((Number(limits[c.id] ?? 0) / current) * target)
-          : Math.round(target / cats.length)
-      }
-    }
-    dirty = true
-  }
-
   async function addExpense() {
     if (!newExp.description || newExp.amount <= 0) return
     await api.addPlannedExpense(newExp, $period.year, $period.month)
@@ -138,7 +120,6 @@
         <div class="card">
           <div class="row">
             <h2 class="card-title">Лимиты по категориям</h2>
-            <button class="btn btn-secondary btn-sm" onclick={autoDistribute}>Разложить по 50/30/20</button>
           </div>
           {#if $showHelp}
             <p class="explain">
