@@ -64,8 +64,6 @@
   }
 </script>
 
-<div class="page-header"><h1>Категории</h1></div>
-
 {#if !loaded}
   <Loader />
 {:else}

@@ -1,7 +1,10 @@
 <script lang="ts">
   import { api, type Transaction } from './lib/api'
-  import { authenticated, route, showToast, invalidate } from './lib/stores'
+  import { authenticated, route, showToast, invalidate, period } from './lib/stores'
+  import { money, monthName } from './lib/format'
   import BottomNav from './lib/components/BottomNav.svelte'
+  import SideNav from './lib/components/SideNav.svelte'
+  import AppHeader from './lib/components/AppHeader.svelte'
   import Toast from './lib/components/Toast.svelte'
   import BottomSheet from './lib/components/BottomSheet.svelte'
   import TxForm from './lib/components/TxForm.svelte'
@@ -22,6 +25,8 @@
 
   let onboarded = $state<boolean | null>(null)
   let bootError = $state<string | null>(null)
+  // Kept in sync for the sidebar summary block.
+  let summary = $state<any>(null)
 
   function checkAuth() {
     bootError = null
@@ -43,6 +48,31 @@
 
   $effect(() => {
     if ($authenticated) checkOnboarding()
+  })
+
+  $effect(() => {
+    if (!onboarded) return
+    const { year, month } = $period
+    api.dashboard(year, month).then((s) => (summary = s)).catch(() => {})
+  })
+
+  const TITLES: Record<string, { title: string; sub: string; period?: boolean }> = {
+    dashboard: { title: 'Главная', sub: 'Сколько осталось и куда уходит' },
+    transactions: { title: 'Операции', sub: 'История трат и доходов' },
+    plan: { title: 'План месяца', sub: 'Лимиты, доходы и обязательные платежи' },
+    deposit: { title: 'Накопления', sub: 'Цели, вклад и пополнения' },
+    analytics: { title: 'Аналитика', sub: 'Куда уходят деньги и что будет к концу месяца' },
+    more: { title: 'Настройки', sub: 'Семья, категории, интеграции' },
+    faq: { title: 'Вопросы', sub: 'Как считаются цифры', period: false },
+    categories: { title: 'Категории', sub: 'Названия, иконки и группы', period: false },
+    integrations: { title: 'Интеграции', sub: 'Telegram-бот и импорт', period: false },
+  }
+  let head = $derived(TITLES[$route] ?? TITLES.dashboard)
+
+  let daysLeft = $derived.by(() => {
+    const now = new Date()
+    const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    return Math.max(dim - now.getDate(), 0)
   })
 
   // Add-operation sheet state machine: closed -> form -> (income) allocate
@@ -87,47 +117,53 @@
 {:else if !onboarded}
   <Onboarding ondone={() => (onboarded = true)} />
 {:else}
-  <div class="app-shell">
-    {#if $route === 'dashboard'}
-      <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
-    {:else if $route === 'plan'}
-      <Plan />
-    {:else if $route === 'deposit'}
-      <Deposit />
-    {:else if $route === 'analytics'}
-      <Analytics />
-    {:else if $route === 'more'}
-      <More />
-    {:else if $route === 'faq'}
-      <Faq />
-    {:else if $route === 'categories'}
-      <Categories />
-    {:else if $route === 'transactions'}
-      <Transactions />
-    {:else if $route === 'integrations'}
-      <Integrations />
-    {:else}
-      <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
-    {/if}
+  <div class="app-layout">
+    <SideNav
+      onadd={openAdd}
+      freeAmount={summary ? money(summary.remaining) : ''}
+      perDay={summary && daysLeft > 0 ? money(summary.remaining / daysLeft) : '0'}
+      {daysLeft}
+    />
+
+    <div class="app-shell">
+      <AppHeader
+        title={head.title}
+        subtitle={head.sub}
+        showPeriod={head.period !== false}
+        onadd={openAdd}
+      />
+
+      {#if $route === 'plan'}
+        <Plan />
+      {:else if $route === 'deposit'}
+        <Deposit />
+      {:else if $route === 'analytics'}
+        <Analytics />
+      {:else if $route === 'more'}
+        <More />
+      {:else if $route === 'faq'}
+        <Faq />
+      {:else if $route === 'categories'}
+        <Categories />
+      {:else if $route === 'transactions'}
+        <Transactions />
+      {:else if $route === 'integrations'}
+        <Integrations />
+      {:else}
+        <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
+      {/if}
+    </div>
   </div>
 
   <BottomNav onadd={openAdd} />
 
-  <BottomSheet
-    open={sheet === 'form'}
-    title="Новая операция"
-    onclose={() => (sheet = 'closed')}
-  >
+  <BottomSheet open={sheet === 'form'} title="Новая операция" onclose={() => (sheet = 'closed')}>
     {#snippet children()}
       <TxForm onsubmitted={onSubmitted} />
     {/snippet}
   </BottomSheet>
 
-  <BottomSheet
-    open={sheet === 'allocate'}
-    title="Распределение дохода"
-    onclose={() => (sheet = 'closed')}
-  >
+  <BottomSheet open={sheet === 'allocate'} title="Распределение дохода" onclose={() => (sheet = 'closed')}>
     {#snippet children()}
       {#if allocTxId}
         <AllocationSheet txId={allocTxId} ondone={onAllocated} />

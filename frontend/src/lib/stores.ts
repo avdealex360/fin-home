@@ -20,6 +20,13 @@ export function navigate(to: string) {
   window.location.hash = `/${to}`
 }
 
+// "Пояснения" — plain-language captions under every number. Persisted so the
+// switch survives reloads; on by default for the first month of use.
+const HELP_KEY = 'finhome.showHelp'
+const helpStored = localStorage.getItem(HELP_KEY)
+export const showHelp = writable<boolean>(helpStored === null ? true : helpStored === '1')
+showHelp.subscribe((v) => localStorage.setItem(HELP_KEY, v ? '1' : '0'))
+
 // Toast with optional undo action.
 export interface ToastState {
   message: string

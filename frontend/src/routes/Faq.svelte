@@ -36,7 +36,6 @@
   ]
 </script>
 
-<div class="page-header"><h1>Как это работает</h1></div>
 <div class="page">
   <div class="card hero">
     <div class="pots">

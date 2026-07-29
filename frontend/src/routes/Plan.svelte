@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, type Category, type DebtSummary } from '../lib/api'
-  import { period, dataVersion, invalidate, showToast } from '../lib/stores'
-  import { money, monthName, shiftMonth } from '../lib/format'
+  import { period, dataVersion, invalidate, showToast, showHelp } from '../lib/stores'
+  import { money } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
   import Loader from '../lib/components/Loader.svelte'
 
@@ -12,6 +12,7 @@
   let limits = $state<Record<number, number>>({})
   let spent = $state<Record<number, number>>({})
   let saving = $state(false)
+  let dirty = $state(false)
   let meter = $state<Record<string, { allocated: number; target: number }>>({})
 
   let newExp = $state({ description: '', amount: 0 })
@@ -25,10 +26,7 @@
 
   async function load(year: number, month: number) {
     const [p, cats, ds, m] = await Promise.all([
-      api.plan(year, month),
-      api.categories(),
-      api.debts(),
-      api.planMeter(year, month),
+      api.plan(year, month), api.categories(), api.debts(), api.planMeter(year, month),
     ])
     plan = p
     categories = cats.filter((c) => c.group !== 'income')
@@ -44,16 +42,10 @@
     }
     limits = lm
     spent = sp
+    dirty = false
   }
 
-  async function loadMeter() {
-    meter = await api.planMeter($period.year, $period.month)
-  }
-
-  function changeMonth(delta: number) {
-    const [y, m] = shiftMonth($period.year, $period.month, delta)
-    period.set({ year: y, month: m })
-  }
+  async function loadMeter() { meter = await api.planMeter($period.year, $period.month) }
 
   async function saveIncome() {
     if (income === plan.expected_income) return
@@ -68,8 +60,27 @@
 
   async function saveLimits() {
     await api.saveLimits(limits, $period.year, $period.month)
+    dirty = false
     invalidate()
     showToast('Лимиты сохранены')
+  }
+
+  /** Spread the unallocated income across the group by the 50/30/20 rule,
+   *  proportionally to what is already set (or evenly if nothing is set). */
+  function autoDistribute() {
+    const pcts: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
+    for (const grp of ['needs', 'wants', 'savings']) {
+      const cats = categories.filter((c) => c.group === grp)
+      if (!cats.length) continue
+      const target = (income * pcts[grp]) / 100
+      const current = cats.reduce((s, c) => s + Number(limits[c.id] ?? 0), 0)
+      for (const c of cats) {
+        limits[c.id] = current > 0
+          ? Math.round((Number(limits[c.id] ?? 0) / current) * target)
+          : Math.round(target / cats.length)
+      }
+    }
+    dirty = true
   }
 
   async function addExpense() {
@@ -78,20 +89,14 @@
     newExp = { description: '', amount: 0 }
     invalidate()
   }
-  async function delExpense(id: number) {
-    await api.deletePlannedExpense(id)
-    invalidate()
-  }
+  async function delExpense(id: number) { await api.deletePlannedExpense(id); invalidate() }
   async function addDebt() {
     if (!newDebt.debt_id || newDebt.amount <= 0) return
     await api.addPlannedDebt(newDebt, $period.year, $period.month)
     newDebt = { debt_id: 0, amount: 0 }
     invalidate()
   }
-  async function delDebt(id: number) {
-    await api.deletePlannedDebt(id)
-    invalidate()
-  }
+  async function delDebt(id: number) { await api.deletePlannedDebt(id); invalidate() }
 
   const groupLabel: Record<string, string> = { needs: 'Нужды', wants: 'Желания', savings: 'Сбережения' }
   const groupPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
@@ -100,14 +105,12 @@
     return parseFloat((e.target as HTMLInputElement).value) || 0
   }
 
-  // Live-derived allocated sums for needs/wants (editable on this screen)
   let needsAllocated = $derived(
     categories.filter((c) => c.group === 'needs').reduce((s, c) => s + Number(limits[c.id] ?? 0), 0),
   )
   let wantsAllocated = $derived(
     categories.filter((c) => c.group === 'wants').reduce((s, c) => s + Number(limits[c.id] ?? 0), 0),
   )
-  // savings allocated comes from meter (includes funds + deposit target)
   let savingsAllocated = $derived(meter['savings']?.allocated ?? 0)
 
   function meterAllocated(grp: string): number {
@@ -115,152 +118,224 @@
     if (grp === 'wants') return wantsAllocated
     return savingsAllocated
   }
-  function meterTarget(grp: string): number {
-    return income * (groupPct[grp] ?? 0) / 100
-  }
-</script>
+  function meterTarget(grp: string): number { return (income * (groupPct[grp] ?? 0)) / 100 }
 
-<div class="page-header">
-  <button class="btn-ghost btn-sm" onclick={() => changeMonth(-1)} aria-label="Прошлый месяц"><i class="ti ti-chevron-left"></i></button>
-  <h1>{monthName($period.month)} {$period.year}</h1>
-  <button class="btn-ghost btn-sm" onclick={() => changeMonth(1)} aria-label="Следующий месяц"><i class="ti ti-chevron-right"></i></button>
-</div>
+  let allocatedTotal = $derived(needsAllocated + wantsAllocated + savingsAllocated)
+  let unallocated = $derived(income - allocatedTotal)
+  let plannedTotal = $derived(
+    (plan?.planned_expenses ?? []).reduce((s: number, e: any) => s + e.amount, 0) +
+    (plan?.planned_debt_payments ?? []).reduce((s: number, d: any) => s + d.amount, 0),
+  )
+</script>
 
 {#if !plan}
   <Loader />
 {:else}
   <div class="page">
-    <div class="card field">
-      <label for="inc">Ожидаемый доход</label>
-      <input
-        id="inc"
-        class="input num"
-        inputmode="numeric"
-        value={income || ''}
-        oninput={(e) => (income = numFromInput(e))}
-        onblur={saveIncome}
-        disabled={saving}
-      />
-    </div>
-
-    <div class="card stack meter-card">
-      {#each ['needs', 'wants', 'savings'] as grp}
-        {@const allocated = meterAllocated(grp)}
-        {@const target = meterTarget(grp)}
-        <div class="meter-row">
-          <div class="meter-labels">
-            <span class="meter-name">{groupLabel[grp]}</span>
-            <span class="meter-nums"><span class="num">{money(allocated)}</span> / <span class="num">{money(target)}</span> ₽</span>
+    <div class="cols">
+      <!-- Limits editor -->
+      <section class="col-wide stack">
+        <div class="card">
+          <div class="row">
+            <h2 class="card-title">Лимиты по категориям</h2>
+            <button class="btn btn-secondary btn-sm" onclick={autoDistribute}>Разложить по 50/30/20</button>
           </div>
-          <ProgressBar spent={allocated} limit={target} />
-        </div>
-      {/each}
-    </div>
+          {#if $showHelp}
+            <p class="explain">
+              Лимит — сколько вы разрешили себе потратить за месяц. Он же становится «планом»
+              в аналитике и задаёт цвет шкал на Главной.
+            </p>
+          {/if}
 
-    <div>
-      <div class="section-label">Лимиты по категориям</div>
-      <div class="card stack">
-        {#each ['needs', 'wants', 'savings'] as grp}
-          {@const cats = categories.filter((c) => c.group === grp)}
-          {#if cats.length}
-            <div class="grp">{groupLabel[grp]}</div>
-            {#each cats as c}
-              <div class="limit-row">
-                <span class="limit-name">
-                  <i class="ti {c.icon}" style="color:{c.color}"></i>
-                  <span class="limit-name-text">
-                    {c.name}
-                    {#if spent[c.id] > 0}<span class="limit-spent muted">потрачено {money(spent[c.id])} ₽</span>{/if}
+          <div class="limits">
+            <div class="lhead">
+              <span>Категория</span><span class="r">Потрачено</span><span class="r">Лимит</span><span class="r">Остаток</span>
+            </div>
+            {#each ['needs', 'wants', 'savings'] as grp}
+              {@const cats = categories.filter((c) => c.group === grp)}
+              {#if cats.length}
+                <div class="grp">
+                  <span>{groupLabel[grp]}</span>
+                  <span class="num dim">
+                    {money(meterAllocated(grp))} / {money(meterTarget(grp))} ₽ · цель {groupPct[grp]}%
                   </span>
-                </span>
-                <input
-                  class="input num limit-input"
-                  inputmode="numeric"
-                  value={limits[c.id] || ''}
-                  oninput={(e) => (limits[c.id] = numFromInput(e))}
-                />
+                </div>
+                {#each cats as c}
+                  {@const lim = Number(limits[c.id] ?? 0)}
+                  {@const left = lim - (spent[c.id] ?? 0)}
+                  <div class="lrow">
+                    <span class="lname">
+                      <i class="ti {c.icon}" style="color: {c.color}"></i>
+                      <span>{c.name}</span>
+                    </span>
+                    <span class="num r dim">{money(spent[c.id] ?? 0)}</span>
+                    <input
+                      class="input num linput"
+                      inputmode="numeric"
+                      aria-label="Лимит: {c.name}"
+                      value={limits[c.id] || ''}
+                      oninput={(e) => { limits[c.id] = numFromInput(e); dirty = true }}
+                    />
+                    <span class="num r" style="color: var(--{left < 0 ? 'red' : left === 0 ? 'text-muted' : 'green'})">
+                      {left < 0 ? '−' : ''}{money(Math.abs(left))}
+                    </span>
+                  </div>
+                {/each}
+              {/if}
+            {/each}
+          </div>
+
+          <div class="save-bar" class:dirty>
+            <span class="small {unallocated < 0 ? 'red' : 'muted'}">
+              {unallocated >= 0
+                ? `Не распределено ${money(unallocated)} ₽ из ${money(income)} ₽`
+                : `Распределено больше дохода на ${money(-unallocated)} ₽`}
+            </span>
+            <button class="btn btn-primary btn-sm" onclick={saveLimits} disabled={!dirty}>
+              {dirty ? 'Сохранить лимиты' : 'Всё сохранено'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Income + meters + planned -->
+      <aside class="col stack">
+        <div class="card">
+          <h2 class="card-title">Ожидаемый доход</h2>
+          {#if $showHelp}
+            <p class="explain">От этой суммы считаются доли 50/30/20 и «идеальные» лимиты.</p>
+          {/if}
+          <input
+            class="input num income-input"
+            inputmode="numeric"
+            aria-label="Ожидаемый доход"
+            value={income || ''}
+            oninput={(e) => (income = numFromInput(e))}
+            onblur={saveIncome}
+            disabled={saving}
+          />
+          <div class="stack meters">
+            {#each ['needs', 'wants', 'savings'] as grp}
+              {@const allocated = meterAllocated(grp)}
+              {@const target = meterTarget(grp)}
+              <div>
+                <div class="row">
+                  <span class="small">{groupLabel[grp]} <span class="dim tiny">цель {groupPct[grp]}%</span></span>
+                  <span class="num tiny dim">{money(allocated)} / {money(target)} ₽</span>
+                </div>
+                <ProgressBar spent={allocated} limit={target} />
               </div>
             {/each}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <h2 class="card-title">Крупные расходы</h2>
+            {#if plannedTotal > 0}<span class="num tiny dim">всего {money(plannedTotal)} ₽</span>{/if}
+          </div>
+          {#if $showHelp}
+            <p class="explain">Разовые траты, которые уже известны. Учитывайте их до того, как распределите доход.</p>
           {/if}
-        {/each}
-        <button class="btn btn-secondary" onclick={saveLimits}>Сохранить лимиты</button>
-      </div>
-    </div>
-
-    <div>
-      <div class="section-label">Плановые крупные расходы</div>
-      <div class="card stack">
-        {#each plan.planned_expenses as e}
-          <div class="limit-row">
-            <span>{e.description}</span>
-            <span class="num">{money(e.amount)} ₽
-              <button class="del-x" onclick={() => delExpense(e.id)} aria-label="Удалить"><i class="ti ti-x"></i></button>
-            </span>
+          <div class="stack" style="margin-top: 12px; gap: 10px">
+            {#each plan.planned_expenses as e}
+              <div class="row">
+                <span class="small">{e.description}</span>
+                <span class="num small">
+                  {money(e.amount)} ₽
+                  <button class="del-x" onclick={() => delExpense(e.id)} aria-label="Удалить"><i class="ti ti-x"></i></button>
+                </span>
+              </div>
+            {/each}
           </div>
-        {/each}
-        <div class="add-row">
-          <input class="input" placeholder="Описание" bind:value={newExp.description} />
-          <input
-            class="input num add-amt"
-            inputmode="numeric"
-            placeholder="₽"
-            value={newExp.amount || ''}
-            oninput={(e) => (newExp.amount = numFromInput(e))}
-          />
-          <button class="btn-add" onclick={addExpense} aria-label="Добавить"><i class="ti ti-plus"></i></button>
-        </div>
-      </div>
-    </div>
-
-    {#if debts.length}
-      <div>
-        <div class="section-label">Плановые взносы по долгам</div>
-        <div class="card stack">
-          {#each plan.planned_debt_payments as p}
-            <div class="limit-row">
-              <span>{p.debt_name}</span>
-              <span class="num">{money(p.amount)} ₽
-                <button class="del-x" onclick={() => delDebt(p.id)} aria-label="Удалить"><i class="ti ti-x"></i></button>
-              </span>
-            </div>
-          {/each}
           <div class="add-row">
-            <select class="input" bind:value={newDebt.debt_id}>
-              <option value={0}>Долг…</option>
-              {#each debts as d}<option value={d.id}>{d.name}</option>{/each}
-            </select>
-            <input
-              class="input num add-amt"
-              inputmode="numeric"
-              placeholder="₽"
-              value={newDebt.amount || ''}
-              oninput={(e) => (newDebt.amount = numFromInput(e))}
-            />
-            <button class="btn-add" onclick={addDebt} aria-label="Добавить"><i class="ti ti-plus"></i></button>
+            <input class="input" placeholder="Описание" bind:value={newExp.description} />
+            <input class="input num add-amt" inputmode="numeric" placeholder="₽" value={newExp.amount || ''} oninput={(e) => (newExp.amount = numFromInput(e))} />
+            <button class="btn-add" onclick={addExpense} aria-label="Добавить"><i class="ti ti-plus"></i></button>
           </div>
         </div>
-      </div>
-    {/if}
+
+        {#if debts.length}
+          <div class="card">
+            <h2 class="card-title">Взносы по долгам</h2>
+            <div class="stack" style="margin-top: 12px; gap: 10px">
+              {#each plan.planned_debt_payments as p}
+                <div class="row">
+                  <span class="small">{p.debt_name}</span>
+                  <span class="num small">
+                    {money(p.amount)} ₽
+                    <button class="del-x" onclick={() => delDebt(p.id)} aria-label="Удалить"><i class="ti ti-x"></i></button>
+                  </span>
+                </div>
+              {/each}
+            </div>
+            <div class="add-row">
+              <select class="input" bind:value={newDebt.debt_id} aria-label="Долг">
+                <option value={0}>Долг…</option>
+                {#each debts as d}<option value={d.id}>{d.name}</option>{/each}
+              </select>
+              <input class="input num add-amt" inputmode="numeric" placeholder="₽" value={newDebt.amount || ''} oninput={(e) => (newDebt.amount = numFromInput(e))} />
+              <button class="btn-add" onclick={addDebt} aria-label="Добавить"><i class="ti ti-plus"></i></button>
+            </div>
+          </div>
+        {/if}
+      </aside>
+    </div>
   </div>
 {/if}
 
 <style>
-  .grp { font-size: var(--text-sm); color: var(--blue); font-weight: 600; margin-top: var(--space-2); }
-  .limit-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-  .limit-name { font-size: var(--text-sm); display: flex; align-items: flex-start; gap: 6px; }
-  .limit-name i { font-size: 18px; flex-shrink: 0; line-height: 1; margin-top: 1px; }
-  .limit-name-text { display: flex; flex-direction: column; gap: 1px; }
-  .limit-spent { font-size: var(--text-xs); font-weight: 400; }
-  .limit-input { width: 110px; text-align: right; }
-  .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
-  .add-row .input { flex: 1; }
-  .add-amt { flex: 0 0 90px; text-align: right; }
-  .btn-add { background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); width: 44px; height: 44px; flex-shrink: 0; }
-  .del-x { background: none; border: none; color: var(--text-muted); padding: 0 0 0 8px; }
+  .limits { margin-top: var(--space-4); }
+  .lhead, .lrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) 96px 118px 96px;
+    gap: var(--space-3);
+    align-items: center;
+  }
+  .lhead {
+    padding-bottom: 8px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .lrow { padding: 7px 0; border-top: 1px solid var(--line); }
+  .lname { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 13.5px; }
+  .lname i { font-size: 18px; flex-shrink: 0; }
+  .lname span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .linput { text-align: right; padding: 9px 10px; font-size: 13px; }
+  .r { text-align: right; font-size: 13px; }
 
-  .meter-card { gap: var(--space-3); }
-  .meter-row { display: flex; flex-direction: column; gap: var(--space-1); }
-  .meter-labels { display: flex; justify-content: space-between; align-items: baseline; }
-  .meter-name { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
-  .meter-nums { font-size: var(--text-xs); color: var(--text-muted); }
+  .grp {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    margin-top: var(--space-4); padding-bottom: 6px;
+    font-size: var(--text-sm); font-weight: 600; color: var(--blue);
+  }
+  .grp .num { font-size: 11.5px; font-weight: 400; }
+
+  .save-bar {
+    position: sticky; bottom: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+    margin: var(--space-4) calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+    padding: var(--space-3) var(--space-5);
+    background: rgba(21, 25, 34, 0.94);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+
+  .income-input { margin-top: var(--space-3); font-size: var(--text-xl); text-align: right; padding: 12px 14px; }
+  .meters { margin-top: var(--space-4); gap: var(--space-3); }
+
+  .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+  .add-row .input { flex: 1; min-width: 0; }
+  .add-amt { flex: 0 0 88px; text-align: right; }
+  .btn-add {
+    background: var(--blue); color: #0b1220; border: none; border-radius: var(--radius-sm);
+    width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center;
+  }
+  .del-x { background: none; border: none; color: var(--text-muted); padding: 0 0 0 8px; }
+  .del-x:hover { color: var(--red); }
+
+  .small { font-size: var(--text-sm); }
+  .tiny { font-size: var(--text-xs); }
+  .red { color: var(--red); }
 </style>

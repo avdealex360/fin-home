@@ -43,16 +43,20 @@
     right: 0;
     bottom: 0;
     z-index: 20;
-    max-width: var(--shell-w);
-    margin: 0 auto;
     height: calc(var(--nav-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--bg-surface);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(15, 19, 27, 0.96);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--line);
     display: flex;
+  }
+  /* Replaced by the left sidebar from tablet width up. */
+  @media (min-width: 900px) {
+    .bottom-nav { display: none; }
   }
   .nav-item {
     flex: 1;
+    min-height: 44px;
     background: none;
     border: none;
     display: flex;
@@ -61,7 +65,8 @@
     justify-content: center;
     gap: 3px;
     color: var(--text-muted);
-    font-size: var(--text-xs);
+    font-size: 10.5px;
+    font-weight: 500;
   }
   .nav-item i { font-size: 22px; }
   .nav-item.active { color: var(--blue); }
