@@ -3,12 +3,14 @@
 
   interface Props {
     onadd: () => void
+    /** Real family members, e.g. "Аня и Илья". Falls back to "Семья". */
+    brandSub?: string
     /** Short summary shown at the bottom of the expanded sidebar. */
     freeAmount?: string
     perDay?: string
     daysLeft?: number
   }
-  let { onadd, freeAmount = '', perDay = '', daysLeft = 0 }: Props = $props()
+  let { onadd, brandSub = '', freeAmount = '', perDay = '', daysLeft = 0 }: Props = $props()
 
   const items = [
     { id: 'dashboard', label: 'Главная', icon: 'ti-home' },
@@ -25,7 +27,7 @@
     <span class="mark">₽</span>
     <span class="brand-text">
       <span class="brand-title">Семейный бюджет</span>
-      <span class="brand-sub">Аня и Илья</span>
+      <span class="brand-sub">{brandSub || 'Семья'}</span>
     </span>
   </div>
 

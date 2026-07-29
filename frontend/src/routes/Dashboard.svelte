@@ -347,6 +347,12 @@
   .formula .red { background: rgba(240, 104, 106, 0.1); color: var(--red); }
   .formula .gold { background: rgba(216, 162, 74, 0.12); color: var(--gold); }
   .formula .op { align-self: center; color: var(--text-muted); }
+  /* На узких экранах формула не влезает в строку — раскладываем построчно. */
+  @media (max-width: 560px) {
+    .formula { flex-direction: column; align-items: stretch; gap: 6px; margin-bottom: var(--space-2); }
+    .formula .op { display: none; }
+    .formula .f { text-align: left; }
+  }
 
   .hero-foot {
     display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;

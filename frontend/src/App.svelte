@@ -27,6 +27,8 @@
   let bootError = $state<string | null>(null)
   // Kept in sync for the sidebar summary block.
   let summary = $state<any>(null)
+  // Real family members shown as the sidebar subtitle.
+  let usersLabel = $state('')
 
   function checkAuth() {
     bootError = null
@@ -54,6 +56,16 @@
     if (!onboarded) return
     const { year, month } = $period
     api.dashboard(year, month).then((s) => (summary = s)).catch(() => {})
+  })
+
+  $effect(() => {
+    if (!onboarded) return
+    api.users()
+      .then((us) => {
+        const names = us.filter((u) => u.is_active).map((u) => u.name)
+        usersLabel = names.length === 2 ? names.join(' и ') : names.join(', ')
+      })
+      .catch(() => {})
   })
 
   const TITLES: Record<string, { title: string; sub: string; period?: boolean }> = {
@@ -120,6 +132,7 @@
   <div class="app-layout">
     <SideNav
       onadd={openAdd}
+      brandSub={usersLabel}
       freeAmount={summary ? money(summary.remaining) : ''}
       perDay={summary && daysLeft > 0 ? money(summary.remaining / daysLeft) : '0'}
       {daysLeft}

@@ -191,7 +191,7 @@
 
 <div class="meta-row">
   <input class="input" type="date" bind:value={date} aria-label="Дата" />
-  <button class="btn-ghost btn-sm" onclick={() => (showComment = !showComment)}>
+  <button class="btn btn-ghost btn-sm" onclick={() => (showComment = !showComment)}>
     <i class="ti ti-message"></i> Комментарий
   </button>
 </div>
