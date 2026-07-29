@@ -5,6 +5,8 @@
   import { monthPace } from '../lib/insights'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
   import Loader from '../lib/components/Loader.svelte'
+  import TxForm from '../lib/components/TxForm.svelte'
+  import BottomSheet from '../lib/components/BottomSheet.svelte'
 
   interface Props {
     onAllocate: (txId: number) => void
@@ -67,6 +69,10 @@
       .filter((r: any) => r.limit > 0)
       .sort((a: any, b: any) => b.spent - a.spent)
   })
+
+  let editingTx = $state<Transaction | null>(null)
+  function openEdit(tx: Transaction) { editingTx = tx }
+  function onEdited() { editingTx = null; invalidate(); showToast('Операция изменена') }
 
   async function del(tx: Transaction) {
     recent = recent.filter((t) => t.id !== tx.id)
@@ -256,6 +262,7 @@
                 <span class="num amt" class:income={t.type === 'income'}>
                   {t.type === 'income' ? '+' : '−'} {money(t.amount)} ₽
                 </span>
+                <button class="tx-edit" aria-label="Изменить" onclick={() => openEdit(t)}><i class="ti ti-pencil"></i></button>
                 <button class="tx-del" aria-label="Удалить" onclick={() => del(t)}><i class="ti ti-trash"></i></button>
               </div>
             {/each}
@@ -326,6 +333,12 @@
     </div>
   </div>
 {/if}
+
+<BottomSheet open={!!editingTx} title="Изменить операцию" onclose={() => (editingTx = null)}>
+  {#snippet children()}
+    {#if editingTx}<TxForm existing={editingTx} onsubmitted={onEdited} />{/if}
+  {/snippet}
+</BottomSheet>
 
 <style>
   .hero {
@@ -407,6 +420,11 @@
   .tx-main { flex: 1; min-width: 0; }
   .amt { font-size: 14px; font-weight: 500; white-space: nowrap; }
   .amt.income { color: var(--green); }
+  .tx-edit {
+    width: 32px; height: 32px; flex: 0 0 32px; border: none; border-radius: 9px;
+    background: transparent; color: var(--text-muted); display: grid; place-items: center;
+  }
+  .tx-edit:hover { background: var(--bg-elevated); color: var(--text-primary); }
   .tx-del {
     width: 32px; height: 32px; flex: 0 0 32px; border: none; border-radius: 9px;
     background: transparent; color: var(--text-muted); display: grid; place-items: center;
