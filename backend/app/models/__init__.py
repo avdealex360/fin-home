@@ -111,8 +111,6 @@ class MonthlyPlan(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     expected_income: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     limits: Mapped[list["CategoryLimit"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"

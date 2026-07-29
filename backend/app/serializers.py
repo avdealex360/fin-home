@@ -143,8 +143,6 @@ def plan_dict(p: MonthlyPlan, spent: dict | None = None) -> dict:
         "year": p.year,
         "month": p.month,
         "expected_income": float(p.expected_income),
-        "is_closed": p.is_closed,
-        "closed_at": p.closed_at.isoformat() if p.closed_at else None,
         "limits": [
             {
                 "id": l.id,

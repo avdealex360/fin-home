@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Category, CategoryLimit, IncomeAllocation, MonthlyPlan, SinkingFund, Transaction
+from app.models import Category, IncomeAllocation, MonthlyPlan, SinkingFund, Transaction
 from app.seed import GROUP_PERCENTS
 
 BUCKETS = [("needs", "Нужды", 50), ("wants", "Желания", 30), ("savings", "Сбережения", 20)]
@@ -196,76 +196,3 @@ def allocate_income(
     db.commit()
     db.refresh(tx)
     return tx
-
-
-def close_month(db: Session, year: int, month: int) -> MonthlyPlan:
-    from datetime import date as date_type
-
-    from app.util import _shift_month
-
-    plan = (
-        db.query(MonthlyPlan)
-        .options(joinedload(MonthlyPlan.limits))
-        .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
-        .first()
-    )
-    if not plan:
-        raise ValueError("Plan not found")
-
-    plan.is_closed = True
-    plan.closed_at = datetime.utcnow()
-
-    next_year, next_month = _shift_month(year, month, 1)
-    next_plan = (
-        db.query(MonthlyPlan)
-        .filter(MonthlyPlan.year == next_year, MonthlyPlan.month == next_month)
-        .first()
-    )
-    if not next_plan:
-        from app.services.plan import PlanService
-
-        next_plan = PlanService.get_or_create_plan(db, next_year, next_month)
-
-    categories = db.query(Category).filter(Category.is_hidden.is_(False)).all()
-    for cat in categories:
-        limit = next(
-            (lim for lim in plan.limits if lim.category_id == cat.id),
-            None,
-        )
-        if not limit:
-            continue
-        spent = (
-            db.query(func.coalesce(func.sum(Transaction.amount), 0))
-            .filter(
-                Transaction.type == "expense",
-                Transaction.category_id == cat.id,
-                extract("year", Transaction.date) == year,
-                extract("month", Transaction.date) == month,
-            )
-            .scalar()
-        ) or Decimal("0")
-        remaining = limit.limit_amount + (limit.carried_over or Decimal("0")) - spent
-        if remaining > 0:
-            existing = (
-                db.query(CategoryLimit)
-                .filter(
-                    CategoryLimit.plan_id == next_plan.id,
-                    CategoryLimit.category_id == cat.id,
-                )
-                .first()
-            )
-            if existing:
-                existing.carried_over = (existing.carried_over or Decimal("0")) + remaining
-            else:
-                db.add(
-                    CategoryLimit(
-                        plan_id=next_plan.id,
-                        category_id=cat.id,
-                        limit_amount=Decimal("0"),
-                        carried_over=remaining,
-                    )
-                )
-
-    db.commit()
-    db.refresh(plan)
-    return plan

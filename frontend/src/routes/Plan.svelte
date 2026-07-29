@@ -93,28 +93,6 @@
     invalidate()
   }
 
-  let closing = $state(false)
-
-  async function closeMonth() {
-    const msg =
-      `Закрыть ${monthName($period.month)} ${$period.year}?\n\n` +
-      'Неизрасходованный остаток по каждому лимиту (лимит минус траты) ' +
-      'прибавится к лимиту той же категории в следующем месяце — так неистраченные ' +
-      'деньги не «сгорают». Действие необратимо.'
-    if (!confirm(msg)) return
-    closing = true
-    try {
-      await api.closeMonth($period.year, $period.month)
-      invalidate()
-      await load($period.year, $period.month)
-      showToast('Месяц закрыт, остатки перенесены на следующий')
-    } catch (e) {
-      showToast((e as Error).message || 'Не удалось закрыть месяц')
-    } finally {
-      closing = false
-    }
-  }
-
   const groupLabel: Record<string, string> = { needs: 'Нужды', wants: 'Желания', savings: 'Сбережения' }
   const groupPct: Record<string, number> = { needs: 50, wants: 30, savings: 20 }
 
@@ -263,19 +241,6 @@
         </div>
       </div>
     {/if}
-
-    {#if !plan.is_closed}
-      <div class="close-block">
-        <button class="btn btn-secondary" onclick={closeMonth} disabled={closing}>
-          <i class="ti ti-lock"></i> {closing ? 'Закрываю…' : 'Закрыть месяц'}
-        </button>
-        <p class="muted close-hint">
-          Неизрасходованные остатки лимитов перенесутся на следующий месяц. Действие необратимо.
-        </p>
-      </div>
-    {:else}
-      <p class="muted"><i class="ti ti-lock"></i> Месяц закрыт, остатки перенесены на следующий.</p>
-    {/if}
   </div>
 {/if}
 
@@ -298,6 +263,4 @@
   .meter-labels { display: flex; justify-content: space-between; align-items: baseline; }
   .meter-name { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
   .meter-nums { font-size: var(--text-xs); color: var(--text-muted); }
-  .close-block { display: flex; flex-direction: column; gap: var(--space-2); }
-  .close-hint { font-size: var(--text-xs); text-align: center; margin: 0; }
 </style>

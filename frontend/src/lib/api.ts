@@ -280,7 +280,6 @@ export const api = {
   addPlannedDebt: (b: unknown, year?: number, month?: number) =>
     req<any>('POST', `/plan/planned-debt${ym(year, month)}`, b),
   deletePlannedDebt: (id: number) => req('DELETE', `/plan/planned-debt/${id}`),
-  closeMonth: (year?: number, month?: number) => req<any>('POST', `/plan/close${ym(year, month)}`),
 
   deposit: () => req<Deposit>('GET', '/deposit'),
   updateDeposit: (b: unknown) => req<Deposit>('POST', '/deposit', b),

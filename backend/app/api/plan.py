@@ -1,17 +1,16 @@
 from __future__ import annotations
-"""Monthly plan: limits, planned expenses/debt payments, close month."""
+"""Monthly plan: limits, planned expenses/debt payments."""
 
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import ym_params
 from app.db import get_db
 from app.serializers import plan_dict
-from app.services.allocation import close_month
 from app.services.plan import PlanService
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -111,13 +110,3 @@ def add_planned_debt(
 def delete_planned_debt(payment_id: int, db: Session = Depends(get_db)):
     PlanService.delete_planned_debt_payment(db, payment_id)
     return {"ok": True}
-
-
-@router.post("/close")
-def close(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(get_db)):
-    year, month = ym
-    try:
-        plan = close_month(db, year, month)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return plan_dict(plan, PlanService.spent_by_category(db, year, month))
