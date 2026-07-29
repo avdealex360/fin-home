@@ -40,24 +40,24 @@ if ! wait_for_app; then
 fi
 echo "OK"
 
-echo "==> caddy :443 (TLS + домен lunalis.tech, с хоста VPS)"
+echo "==> caddy :443 (TLS + домен coin.lunalis.tech, с хоста VPS)"
 # Caddy обслуживает только домен (Let's Encrypt), поэтому стучимся с
-# SNI=lunalis.tech на локальный caddy через --resolve. На «чужой» SNI
+# SNI=coin.lunalis.tech на локальный caddy через --resolve. На «чужой» SNI
 # (caddy / 127.0.0.1) сертификата нет → TLS alert, это НЕ признак сбоя.
 # /api/health публичный → 200. Ретраи гасят задержку выпуска ACME-сертификата.
 ok=""
 for i in 1 2 3 4 5 6; do
     code="$(curl -s -o /dev/null -w '%{http_code}' \
-        --resolve lunalis.tech:443:127.0.0.1 \
-        --connect-timeout 8 https://lunalis.tech/api/health || true)"
+        --resolve coin.lunalis.tech:443:127.0.0.1 \
+        --connect-timeout 8 https://coin.lunalis.tech/api/health || true)"
     if [ "$code" = "200" ]; then ok=1; break; fi
     echo "  ... TLS/домен ещё не готов (HTTP $code), попытка $i/6"
     sleep 5
 done
 if [ -n "$ok" ]; then
-    echo "OK (HTTP 200 via https://lunalis.tech, Let's Encrypt)"
+    echo "OK (HTTP 200 via https://coin.lunalis.tech, Let's Encrypt)"
 else
-    echo "FAIL — https://lunalis.tech/api/health не отвечает 200 (cert/DNS/Caddy)"
+    echo "FAIL — https://coin.lunalis.tech/api/health не отвечает 200 (cert/DNS/Caddy)"
     exit 1
 fi
 
