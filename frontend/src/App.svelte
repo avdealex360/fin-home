@@ -9,7 +9,8 @@
   import BottomSheet from './lib/components/BottomSheet.svelte'
   import TxForm from './lib/components/TxForm.svelte'
   import Onboarding from './lib/components/Onboarding.svelte'
-  import Login from './lib/components/Login.svelte'
+  import Landing from './lib/components/Landing.svelte'
+  import Register from './lib/components/Register.svelte'
   import Loader from './lib/components/Loader.svelte'
 
   import Dashboard from './routes/Dashboard.svelte'
@@ -85,6 +86,9 @@
   }
   let head = $derived(TITLES[$route] ?? TITLES.dashboard)
 
+  // "#/register/<token>" — invite registration, reachable while logged out.
+  let inviteToken = $derived($route.startsWith('register/') ? $route.slice('register/'.length) : null)
+
   let daysLeft = $derived.by(() => {
     const now = new Date()
     const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -114,7 +118,11 @@
 {:else if $authenticated === null}
   <Loader />
 {:else if !$authenticated}
-  <Login />
+  {#if inviteToken}
+    <Register token={inviteToken} />
+  {:else}
+    <Landing />
+  {/if}
 {:else if onboarded === null}
   <Loader />
 {:else if !onboarded}
