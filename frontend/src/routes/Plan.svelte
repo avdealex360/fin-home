@@ -212,17 +212,19 @@
 
         <div class="card">
           <div class="row">
-            <h2 class="card-title">Крупные расходы</h2>
+            <h2 class="card-title">Заметки на месяц</h2>
             {#if plannedTotal > 0}<span class="num tiny dim">всего {money(plannedTotal)} ₽</span>{/if}
           </div>
           {#if $showHelp}
             <p class="explain">
-              Просто заметки-напоминалки на месяц: известные разовые траты, чтобы держать их
-              в голове при планировании. Ни на лимиты, ни на операции, ни на аналитику не влияют —
-              сама трата записывается обычной операцией, когда случится.
+              Напоминалки при планировании: известные разовые траты и намеченные взносы по долгам.
+              Ни на лимиты, ни на операции, ни на аналитику не влияют — реальная трата записывается
+              обычной операцией, а платёж по долгу отмечается в «Ещё» → Долги.
             </p>
           {/if}
-          <div class="stack" style="margin-top: 12px; gap: 10px">
+
+          <div class="section-label" style="margin-top: 12px">Крупные расходы</div>
+          <div class="stack" style="margin-top: 8px; gap: 10px">
             {#each plan.planned_expenses as e}
               <div class="row">
                 <span class="small">{e.description}</span>
@@ -238,19 +240,10 @@
             <input class="input num add-amt" inputmode="numeric" placeholder="₽" value={newExp.amount || ''} oninput={(e) => (newExp.amount = numFromInput(e))} />
             <button class="btn-add" onclick={addExpense} aria-label="Добавить"><i class="ti ti-plus"></i></button>
           </div>
-        </div>
 
-        {#if debts.length}
-          <div class="card">
-            <h2 class="card-title">Взносы по долгам</h2>
-            {#if $showHelp}
-              <p class="explain">
-                Тоже заметки: сколько планируете внести по каждому долгу в этом месяце.
-                На остатки долгов и на бюджет не влияют — платёж отмечается в «Ещё» → Долги,
-                а расход записывается обычной операцией.
-              </p>
-            {/if}
-            <div class="stack" style="margin-top: 12px; gap: 10px">
+          {#if debts.length}
+            <div class="section-label" style="margin-top: 16px">Взносы по долгам</div>
+            <div class="stack" style="margin-top: 8px; gap: 10px">
               {#each plan.planned_debt_payments as p}
                 <div class="row">
                   <span class="small">{p.debt_name}</span>
@@ -269,8 +262,8 @@
               <input class="input num add-amt" inputmode="numeric" placeholder="₽" value={newDebt.amount || ''} oninput={(e) => (newDebt.amount = numFromInput(e))} />
               <button class="btn-add" onclick={addDebt} aria-label="Добавить"><i class="ti ti-plus"></i></button>
             </div>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </aside>
     </div>
   </div>
