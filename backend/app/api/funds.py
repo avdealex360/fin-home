@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import ws_id
 from app.db import get_db
-from app.serializers import fund_dict, transaction_dict
+from app.serializers import fund_dict
 from app.services.sinking_funds import SinkingFundService
 
 router = APIRouter(prefix="/api/funds", tags=["funds"])
@@ -34,10 +34,6 @@ class ContributeBody(BaseModel):
 
 class SpendBody(BaseModel):
     amount: Decimal
-    date: date_type | None = None
-    category_id: int | None = None
-    user_id: int | None = None
-    comment: str | None = None
 
 
 @router.get("")
@@ -97,16 +93,7 @@ def contribute(fund_id: int, body: ContributeBody, db: Session = Depends(get_db)
 @router.post("/{fund_id}/spend")
 def spend(fund_id: int, body: SpendBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     try:
-        tx = SinkingFundService.spend_from_fund(
-            db,
-            ws,
-            fund_id,
-            body.amount,
-            body.date or date.today(),
-            body.category_id,
-            body.user_id,
-            body.comment,
-        )
+        f = SinkingFundService.spend_from_fund(db, ws, fund_id, body.amount)
     except ValueError as e:
         raise HTTPException(404, str(e))
-    return transaction_dict(tx)
+    return fund_dict(f)

@@ -16,7 +16,6 @@
     { id: 'dashboard', label: 'Главная', icon: 'ti-home' },
     { id: 'transactions', label: 'Операции', icon: 'ti-list' },
     { id: 'plan', label: 'План', icon: 'ti-calendar-stats' },
-    { id: 'deposit', label: 'Накопления', icon: 'ti-pig-money' },
     { id: 'analytics', label: 'Аналитика', icon: 'ti-chart-histogram' },
     { id: 'more', label: 'Ещё', icon: 'ti-dots' },
   ]

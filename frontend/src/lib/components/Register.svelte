@@ -22,15 +22,28 @@
     .then((i) => (info = i))
     .catch(() => (invalid = true))
 
-  let canSubmit = $derived(
-    username.trim().length >= 3 && password.length >= 8 && password === password2,
+  // Live per-field hints once the user typed something.
+  let usernameHint = $derived(
+    username && username.trim().length < 3 ? 'Логин должен быть не короче 3 символов' : '',
   )
+  let passwordHint = $derived(
+    password && password.length < 8 ? 'Пароль должен быть не короче 8 символов' : '',
+  )
+  let mismatchHint = $derived(password2 && password !== password2 ? 'Пароли не совпадают' : '')
+
+  function firstProblem(): string {
+    if (username.trim().length < 3) return 'Логин должен быть не короче 3 символов'
+    if (password.length < 8) return 'Пароль должен быть не короче 8 символов'
+    if (password !== password2) return 'Пароли не совпадают'
+    return ''
+  }
 
   async function submit(e: Event) {
     e.preventDefault()
-    if (!canSubmit || !info) return
+    if (!info) return
+    error = firstProblem()
+    if (error) return
     busy = true
-    error = ''
     try {
       await api.register({
         token,
@@ -74,19 +87,19 @@
       <form onsubmit={submit}>
         <input class="input" type="text" placeholder="Логин (мин. 3 символа)"
                autocomplete="username" bind:value={username} />
+        {#if usernameHint}<p class="error">{usernameHint}</p>{/if}
         <input class="input" type="password" placeholder="Пароль (мин. 8 символов)"
                autocomplete="new-password" bind:value={password} />
+        {#if passwordHint}<p class="error">{passwordHint}</p>{/if}
         <input class="input" type="password" placeholder="Пароль ещё раз"
                autocomplete="new-password" bind:value={password2} />
-        {#if password2 && password !== password2}
-          <p class="error">Пароли не совпадают</p>
-        {/if}
+        {#if mismatchHint}<p class="error">{mismatchHint}</p>{/if}
         {#if info.mode === 'create'}
           <input class="input" type="text" placeholder="Название пространства (например «Наша семья»)"
                  bind:value={workspaceName} />
         {/if}
         {#if error}<p class="error">{error}</p>{/if}
-        <button class="btn btn-primary" type="submit" disabled={busy || !canSubmit}>
+        <button class="btn btn-primary" type="submit" disabled={busy}>
           {busy ? 'Создаём…' : 'Создать аккаунт'}
         </button>
       </form>

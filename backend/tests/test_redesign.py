@@ -69,21 +69,21 @@ from app.services.sinking_funds import SinkingFundService
 
 
 def test_fund_create_and_spend_with_group(db):
+    """Funds are a reference-only tracker: spend moves the envelope balance and
+    creates NO transaction — the real expense is recorded separately."""
     f = SinkingFundService.create(db, WS, name="Отпуск", target_amount=Decimal("100000"),
                                   monthly_contribution=Decimal("8000"), group="wants")
     assert f.group == "wants"
     SinkingFundService.contribute(db, WS, f.id, Decimal("8000"), date.today())
-    tx = SinkingFundService.spend_from_fund(db, WS, f.id, Decimal("3000"), date.today(),
-                                            category_id=None, user_id=None, comment=None)
+    SinkingFundService.spend_from_fund(db, WS, f.id, Decimal("3000"))
     db.refresh(f)
     assert f.current_amount == Decimal("5000")
-    assert tx.is_sinking_fund_spend and tx.fund_id == f.id
-    assert tx.workspace_id == WS
+    assert db.query(Transaction).count() == 0
 
 
-def test_dashboard_savings_counts_fund_contributions(db):
-    """Savings.spent must count копилка contributions — the вклад calculator has
-    no ledger at all anymore, so it structurally cannot move this number."""
+def test_dashboard_ignores_fund_movements(db):
+    """Копилки — справочный учёт: their contributions must NOT leak into the
+    dashboard savings numbers; only real transactions count."""
     ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.dashboard import DashboardService
 
@@ -97,9 +97,8 @@ def test_dashboard_savings_counts_fund_contributions(db):
 
     s = DashboardService.get_month_summary(db, WS, y, mth)
     sav = next(g for g in s.groups if g.name == "savings")
-    assert sav.spent == Decimal("5000")
+    assert sav.spent == Decimal("0")
     assert {g.name for g in s.groups} == {"needs", "wants", "savings"}
-    assert not hasattr(s, "goals") or s.goals == []
 
 
 def test_savings_category_limit_shows_up_in_group_limit(db):

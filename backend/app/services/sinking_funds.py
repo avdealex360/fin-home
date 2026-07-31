@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import SinkingFund, SinkingFundContribution, Transaction
+from app.models import SinkingFund, SinkingFundContribution
 
 
 @dataclass
@@ -86,16 +86,10 @@ class SinkingFundService:
         return fund
 
     @staticmethod
-    def spend_from_fund(
-        db: Session,
-        ws_id: int,
-        fund_id: int,
-        amount: Decimal,
-        spend_date: date,
-        category_id: int | None,
-        user_id: int | None,
-        comment: str | None,
-    ) -> Transaction:
+    def spend_from_fund(db: Session, ws_id: int, fund_id: int, amount: Decimal) -> SinkingFund:
+        """Reference-only: decreases the envelope balance without creating a
+        Transaction — funds are a manual tracker, the real expense is recorded
+        separately as a normal operation if it happened."""
         fund = (
             db.query(SinkingFund)
             .filter(SinkingFund.id == fund_id, SinkingFund.workspace_id == ws_id)
@@ -106,22 +100,10 @@ class SinkingFundService:
         fund.current_amount -= amount
         if fund.current_amount < 0:
             fund.current_amount = Decimal("0")
-        tx = Transaction(
-            workspace_id=ws_id,
-            type="expense",
-            amount=amount,
-            date=spend_date,
-            category_id=category_id,
-            user_id=user_id,
-            comment=comment,
-            is_sinking_fund_spend=True,
-            fund_id=fund_id,
-        )
-        db.add(tx)
         SinkingFundService._check_rolling(fund)
         db.commit()
-        db.refresh(tx)
-        return tx
+        db.refresh(fund)
+        return fund
 
     @staticmethod
     def _check_rolling(fund: SinkingFund) -> None:

@@ -31,9 +31,7 @@ def test_sinking_fund_contribute_and_spend(db):
     db.refresh(fund)
     assert fund.current_amount == Decimal("5000")
 
-    SinkingFundService.spend_from_fund(
-        db, WS, fund.id, Decimal("2000"), date.today(), None, None, "test"
-    )
+    SinkingFundService.spend_from_fund(db, WS, fund.id, Decimal("2000"))
     db.refresh(fund)
     assert fund.current_amount == Decimal("3000")
 

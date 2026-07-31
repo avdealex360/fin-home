@@ -71,22 +71,6 @@ def _usage_color(percent: float) -> str:
     return "red"
 
 
-def _savings_fund_contributions(db: Session, ws_id: int, year: int, month: int) -> Decimal:
-    """Money moved into копилки this month — not a Transaction, so it's added on top
-    of the savings-category spend to reflect real progress toward the savings target."""
-    from app.models import SinkingFund, SinkingFundContribution
-    fund = (
-        db.query(func.coalesce(func.sum(SinkingFundContribution.amount), 0))
-        .join(SinkingFund, SinkingFund.id == SinkingFundContribution.fund_id)
-        .filter(SinkingFund.workspace_id == ws_id,
-                SinkingFund.group == "savings",
-                extract("year", SinkingFundContribution.date) == year,
-                extract("month", SinkingFundContribution.date) == month)
-        .scalar()
-    ) or Decimal("0")
-    return Decimal(fund)
-
-
 class DashboardService:
     @staticmethod
     def get_month_summary(db: Session, ws_id: int, year: int, month: int) -> MonthSummary:
@@ -131,9 +115,9 @@ class DashboardService:
         groups = []
         for group_name, percent in GROUP_PERCENTS.items():
             group_limit = DashboardService._group_limit(db, ws_id, plan, group_name, income_plan, percent)
+            # Копилки и долги — справочный ручной учёт: их движения не
+            # смешиваются с операциями, всё считается только по транзакциям.
             spent = DashboardService._group_spent(db, ws_id, year, month, group_name)
-            if group_name == "savings":
-                spent += _savings_fund_contributions(db, ws_id, year, month)
             rem = group_limit - spent
             usage = float(spent / group_limit * 100) if group_limit > 0 else 0.0
             groups.append(
