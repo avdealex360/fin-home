@@ -10,10 +10,18 @@ from app.services.settings_store import get_setting, set_setting
 
 class PlanService:
     @staticmethod
-    def get_or_create_plan(db: Session, year: int, month: int) -> MonthlyPlan:
-        plan = db.query(MonthlyPlan).filter(MonthlyPlan.year == year, MonthlyPlan.month == month).first()
+    def get_or_create_plan(db: Session, ws_id: int, year: int, month: int) -> MonthlyPlan:
+        plan = (
+            db.query(MonthlyPlan)
+            .filter(
+                MonthlyPlan.workspace_id == ws_id,
+                MonthlyPlan.year == year,
+                MonthlyPlan.month == month,
+            )
+            .first()
+        )
         if not plan:
-            plan = MonthlyPlan(year=year, month=month, expected_income=Decimal("0"))
+            plan = MonthlyPlan(workspace_id=ws_id, year=year, month=month, expected_income=Decimal("0"))
             db.add(plan)
             db.commit()
             db.refresh(plan)
@@ -22,12 +30,13 @@ class PlanService:
     @staticmethod
     def save_plan(
         db: Session,
+        ws_id: int,
         year: int,
         month: int,
         expected_income: Decimal,
         category_limits: dict[int, Decimal] | None = None,
     ) -> MonthlyPlan:
-        plan = PlanService.get_or_create_plan(db, year, month)
+        plan = PlanService.get_or_create_plan(db, ws_id, year, month)
         plan.expected_income = expected_income
 
         if category_limits:
@@ -47,15 +56,23 @@ class PlanService:
         return plan
 
     @staticmethod
-    def get_plan_with_limits(db: Session, year: int, month: int) -> tuple[MonthlyPlan | None, list[Category]]:
+    def get_plan_with_limits(db: Session, ws_id: int, year: int, month: int) -> tuple[MonthlyPlan | None, list[Category]]:
         plan = (
             db.query(MonthlyPlan)
-            .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
+            .filter(
+                MonthlyPlan.workspace_id == ws_id,
+                MonthlyPlan.year == year,
+                MonthlyPlan.month == month,
+            )
             .first()
         )
         categories = (
             db.query(Category)
-            .filter(Category.is_hidden.is_(False), Category.group.in_(["needs", "wants", "savings"]))
+            .filter(
+                Category.workspace_id == ws_id,
+                Category.is_hidden.is_(False),
+                Category.group.in_(["needs", "wants", "savings"]),
+            )
             .order_by(Category.sort_order)
             .all()
         )
@@ -91,25 +108,35 @@ class PlanService:
         db.commit()
 
     @staticmethod
-    def delete_planned_expense(db: Session, expense_id: int) -> None:
-        from app.models import PlannedExpense
+    def delete_planned_expense(db: Session, ws_id: int, expense_id: int) -> None:
+        from app.models import MonthlyPlan, PlannedExpense
 
-        item = db.query(PlannedExpense).filter(PlannedExpense.id == expense_id).first()
+        item = (
+            db.query(PlannedExpense)
+            .join(MonthlyPlan, MonthlyPlan.id == PlannedExpense.plan_id)
+            .filter(PlannedExpense.id == expense_id, MonthlyPlan.workspace_id == ws_id)
+            .first()
+        )
         if item:
             db.delete(item)
             db.commit()
 
     @staticmethod
-    def delete_planned_debt_payment(db: Session, payment_id: int) -> None:
-        from app.models import PlannedDebtPayment
+    def delete_planned_debt_payment(db: Session, ws_id: int, payment_id: int) -> None:
+        from app.models import MonthlyPlan, PlannedDebtPayment
 
-        item = db.query(PlannedDebtPayment).filter(PlannedDebtPayment.id == payment_id).first()
+        item = (
+            db.query(PlannedDebtPayment)
+            .join(MonthlyPlan, MonthlyPlan.id == PlannedDebtPayment.plan_id)
+            .filter(PlannedDebtPayment.id == payment_id, MonthlyPlan.workspace_id == ws_id)
+            .first()
+        )
         if item:
             db.delete(item)
             db.commit()
 
     @staticmethod
-    def spent_by_category(db: Session, year: int, month: int) -> dict[int, Decimal]:
+    def spent_by_category(db: Session, ws_id: int, year: int, month: int) -> dict[int, Decimal]:
         from sqlalchemy import extract
 
         from app.models import Transaction
@@ -117,6 +144,7 @@ class PlanService:
         rows = (
             db.query(Transaction.category_id, func.sum(Transaction.amount))
             .filter(
+                Transaction.workspace_id == ws_id,
                 Transaction.type == "expense",
                 Transaction.category_id.isnot(None),
                 extract("year", Transaction.date) == year,
@@ -128,10 +156,10 @@ class PlanService:
         return {cat_id: amount for cat_id, amount in rows}
 
     @staticmethod
-    def meter_503020(db: Session, year: int, month: int) -> dict:
+    def meter_503020(db: Session, ws_id: int, year: int, month: int) -> dict:
         from app.models import Category, CategoryLimit
 
-        plan = PlanService.get_or_create_plan(db, year, month)
+        plan = PlanService.get_or_create_plan(db, ws_id, year, month)
         income = plan.expected_income or Decimal("0")
         out = {}
         for group, pct in (("needs", 50), ("wants", 30), ("savings", 20)):

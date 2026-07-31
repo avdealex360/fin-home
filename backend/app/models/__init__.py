@@ -7,10 +7,56 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class Workspace(Base):
+    """Tenant boundary: one family budget. All root entities carry workspace_id."""
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    onboarded: Mapped[str] = mapped_column(String(20), default="")  # "" | "demo" | "clean"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Account(Base):
+    """Auth principal (login). Not to be confused with AppUser (a payer label)."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    workspace: Mapped["Workspace"] = relationship()
+
+
+class Invite(Base):
+    """Single-use registration invite. workspace_id NULL = the new account gets
+    a fresh workspace; set = the account joins that workspace."""
+
+    __tablename__ = "invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id"), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    used_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    workspace: Mapped["Workspace | None"] = relationship()
+
+
 class AppUser(Base):
     __tablename__ = "app_users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     telegram_id: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
@@ -22,6 +68,7 @@ class Category(Base):
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     group: Mapped[str] = mapped_column(String(20), nullable=False)  # needs, wants, savings, income
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -35,6 +82,7 @@ class SinkingFund(Base):
     __tablename__ = "sinking_funds"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     icon: Mapped[str | None] = mapped_column(String(64), nullable=True)
     color: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -67,6 +115,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     type: Mapped[str] = mapped_column(String(20), nullable=False)  # income, expense, transfer
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -84,9 +133,10 @@ class Transaction(Base):
 
 class MonthlyPlan(Base):
     __tablename__ = "monthly_plans"
-    __table_args__ = (UniqueConstraint("year", "month", name="uq_plan_year_month"),)
+    __table_args__ = (UniqueConstraint("workspace_id", "year", "month", name="uq_plan_year_month"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     expected_income: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
@@ -146,6 +196,7 @@ class Debt(Base):
     __tablename__ = "debts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     remaining: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
@@ -177,9 +228,15 @@ class DebtPayment(Base):
 
 
 class Setting(Base):
-    __tablename__ = "settings"
+    """Key/value config. workspace_id NULL = global scope (secret.* keys: one
+    Telegram bot and one AI account shared by the whole install)."""
 
-    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    __tablename__ = "settings"
+    __table_args__ = (UniqueConstraint("workspace_id", "key", name="uq_settings_ws_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id"), nullable=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 

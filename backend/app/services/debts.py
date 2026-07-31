@@ -24,10 +24,10 @@ class DebtCostAnalysis:
     scenarios: list[DebtCostScenario]
 
 
-def compute_priority_ranks(db: Session) -> None:
+def compute_priority_ranks(db: Session, ws_id: int) -> None:
     debts = (
         db.query(Debt)
-        .filter(Debt.is_closed.is_(False))
+        .filter(Debt.workspace_id == ws_id, Debt.is_closed.is_(False))
         .order_by(Debt.interest_rate.desc(), Debt.remaining.asc())
         .all()
     )
@@ -36,9 +36,9 @@ def compute_priority_ranks(db: Session) -> None:
     db.commit()
 
 
-def get_active_debts_sorted(db: Session) -> list[Debt]:
-    compute_priority_ranks(db)
-    debts = db.query(Debt).filter(Debt.is_closed.is_(False)).all()
+def get_active_debts_sorted(db: Session, ws_id: int) -> list[Debt]:
+    compute_priority_ranks(db, ws_id)
+    debts = db.query(Debt).filter(Debt.workspace_id == ws_id, Debt.is_closed.is_(False)).all()
     debts.sort(key=lambda d: (-float(d.interest_rate), d.remaining))
     return debts
 
@@ -65,8 +65,8 @@ def _months_with_interest(
     return months, total_interest
 
 
-def debt_cost_analysis(db: Session, debt_id: int) -> DebtCostAnalysis | None:
-    debt = db.query(Debt).filter(Debt.id == debt_id).first()
+def debt_cost_analysis(db: Session, ws_id: int, debt_id: int) -> DebtCostAnalysis | None:
+    debt = db.query(Debt).filter(Debt.id == debt_id, Debt.workspace_id == ws_id).first()
     if not debt or debt.is_closed:
         return None
 

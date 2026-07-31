@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_user: str = "budget"
     app_password_hash: str = ""
+    app_password: str = ""  # plain-text fallback for the bootstrap admin (dev)
     app_secret: str = "change-me"
     database_url: str = "sqlite:///./data/budget.db"
     telegram_bot_token: str = ""

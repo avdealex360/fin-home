@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import ym_params
+from app.api.deps import ws_id, ym_params
 from app.db import get_db
 from app.models import (
     AppUser,
@@ -28,16 +28,16 @@ class OnboardBody(BaseModel):
 
 
 @router.get("/onboarding")
-def onboarding_status(db: Session = Depends(get_db)):
-    return {"onboarded": is_onboarded(db)}
+def onboarding_status(db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    return {"onboarded": is_onboarded(db, ws)}
 
 
 @router.post("/onboarding")
-def onboard(body: OnboardBody, db: Session = Depends(get_db)):
+def onboard(body: OnboardBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     if body.mode == "demo":
-        load_demo_data(db)
+        load_demo_data(db, ws)
     elif body.mode == "clean":
-        load_clean_start(db)
+        load_clean_start(db, ws)
     else:
         raise HTTPException(400, "mode must be 'demo' or 'clean'")
     return {"onboarded": True, "mode": body.mode}
@@ -50,14 +50,19 @@ class UserBody(BaseModel):
 
 
 @router.get("/users")
-def list_users(db: Session = Depends(get_db)):
-    users = db.query(AppUser).filter(AppUser.is_active.is_(True)).order_by(AppUser.id).all()
+def list_users(db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    users = (
+        db.query(AppUser)
+        .filter(AppUser.workspace_id == ws, AppUser.is_active.is_(True))
+        .order_by(AppUser.id)
+        .all()
+    )
     return [user_dict(u) for u in users]
 
 
 @router.post("/users")
-def create_user(body: UserBody, db: Session = Depends(get_db)):
-    u = AppUser(name=body.name, telegram_id=body.telegram_id or None)
+def create_user(body: UserBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    u = AppUser(workspace_id=ws, name=body.name, telegram_id=body.telegram_id or None)
     db.add(u)
     db.commit()
     db.refresh(u)
@@ -65,8 +70,8 @@ def create_user(body: UserBody, db: Session = Depends(get_db)):
 
 
 @router.patch("/users/{user_id}")
-def update_user(user_id: int, body: UserBody, db: Session = Depends(get_db)):
-    u = db.query(AppUser).filter(AppUser.id == user_id).first()
+def update_user(user_id: int, body: UserBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    u = db.query(AppUser).filter(AppUser.id == user_id, AppUser.workspace_id == ws).first()
     if not u:
         raise HTTPException(404, "user not found")
     u.name = body.name
@@ -77,8 +82,8 @@ def update_user(user_id: int, body: UserBody, db: Session = Depends(get_db)):
 
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    u = db.query(AppUser).filter(AppUser.id == user_id).first()
+def delete_user(user_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    u = db.query(AppUser).filter(AppUser.id == user_id, AppUser.workspace_id == ws).first()
     if u:
         u.is_active = False
         db.commit()
@@ -98,8 +103,9 @@ def list_categories(
     include_hidden: bool = False,
     group: str | None = None,
     db: Session = Depends(get_db),
+    ws: int = Depends(ws_id),
 ):
-    q = db.query(Category)
+    q = db.query(Category).filter(Category.workspace_id == ws)
     if not include_hidden:
         q = q.filter(Category.is_hidden.is_(False))
     if group:
@@ -109,9 +115,10 @@ def list_categories(
 
 
 @router.post("/categories")
-def create_category(body: CategoryBody, db: Session = Depends(get_db)):
-    max_order = db.query(Category).count()
+def create_category(body: CategoryBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    max_order = db.query(Category).filter(Category.workspace_id == ws).count()
     c = Category(
+        workspace_id=ws,
         name=body.name,
         group=body.group,
         sort_order=body.sort_order if body.sort_order is not None else max_order + 1,
@@ -123,8 +130,8 @@ def create_category(body: CategoryBody, db: Session = Depends(get_db)):
 
 
 @router.patch("/categories/{cat_id}")
-def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_db)):
-    c = db.query(Category).filter(Category.id == cat_id).first()
+def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    c = db.query(Category).filter(Category.id == cat_id, Category.workspace_id == ws).first()
     if not c:
         raise HTTPException(404, "category not found")
     c.name = body.name
@@ -139,7 +146,7 @@ def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_d
 
 
 @router.delete("/categories/{cat_id}")
-def delete_category(cat_id: int, db: Session = Depends(get_db)):
+def delete_category(cat_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     """Hard-delete only when truly unused, otherwise hide.
 
     A category can be referenced from several tables (transactions, plan
@@ -148,7 +155,7 @@ def delete_category(cat_id: int, db: Session = Depends(get_db)):
     expenses) are just configuration — we clean them up so an unused
     category can still be removed instead of raising a FK error.
     """
-    c = db.query(Category).filter(Category.id == cat_id).first()
+    c = db.query(Category).filter(Category.id == cat_id, Category.workspace_id == ws).first()
     if not c:
         return {"ok": True}
 
@@ -172,7 +179,11 @@ def delete_category(cat_id: int, db: Session = Depends(get_db)):
 
 # ---- dashboard ----
 @router.get("/dashboard")
-def dashboard(ym: tuple[int, int] = Depends(ym_params), db: Session = Depends(get_db)):
+def dashboard(
+    ym: tuple[int, int] = Depends(ym_params),
+    db: Session = Depends(get_db),
+    ws: int = Depends(ws_id),
+):
     year, month = ym
-    summary = DashboardService.get_month_summary(db, year, month)
+    summary = DashboardService.get_month_summary(db, ws, year, month)
     return summary

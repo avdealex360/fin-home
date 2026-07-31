@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.deps import ws_id
 from app.db import get_db
 from app.services.deposit import DepositService
 from app.services.settings_store import get_setting, set_setting
@@ -25,43 +26,43 @@ class DepositSettingsBody(BaseModel):
     rate_schedule: str | None = None  # raw JSON string: [{"from": "YYYY-MM-DD", "rate": 17.5}, ...]
 
 
-def _settings_response(db: Session) -> dict:
-    s = DepositService.get_settings(db)
+def _settings_response(db: Session, ws: int) -> dict:
+    s = DepositService.get_settings(db, ws)
     return {
         "rate": float(s["rate"]),
         "start_date": s["start_date"].isoformat() if s["start_date"] else None,
         "term_months": s["term_months"],
         "initial_lump": float(s["initial_lump"]),
         "monthly_contribution": float(s["monthly_contribution"]),
-        "rate_schedule": get_setting(db, "deposit_rate_schedule", "[]"),
+        "rate_schedule": get_setting(db, ws, "deposit_rate_schedule", "[]"),
     }
 
 
 @router.get("")
-def get_deposit(db: Session = Depends(get_db)):
-    return _settings_response(db)
+def get_deposit(db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    return _settings_response(db, ws)
 
 
 @router.post("")
-def update_deposit(body: DepositSettingsBody, db: Session = Depends(get_db)):
+def update_deposit(body: DepositSettingsBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     if body.rate is not None:
-        set_setting(db, "deposit_rate", str(body.rate))
+        set_setting(db, ws, "deposit_rate", str(body.rate))
     if body.start_date is not None:
-        set_setting(db, "deposit_start_date", body.start_date.isoformat())
+        set_setting(db, ws, "deposit_start_date", body.start_date.isoformat())
     if body.term_months is not None:
-        set_setting(db, "deposit_term_months", str(body.term_months))
+        set_setting(db, ws, "deposit_term_months", str(body.term_months))
     if body.initial_lump is not None:
-        set_setting(db, "deposit_initial_lump", str(body.initial_lump))
+        set_setting(db, ws, "deposit_initial_lump", str(body.initial_lump))
     if body.monthly_contribution is not None:
-        set_setting(db, "deposit_monthly_target", str(body.monthly_contribution))
+        set_setting(db, ws, "deposit_monthly_target", str(body.monthly_contribution))
     if body.rate_schedule is not None:
-        set_setting(db, "deposit_rate_schedule", body.rate_schedule)
-    return _settings_response(db)
+        set_setting(db, ws, "deposit_rate_schedule", body.rate_schedule)
+    return _settings_response(db, ws)
 
 
 @router.get("/calculator")
-def calculator(monthly: Decimal | None = None, db: Session = Depends(get_db)):
-    rows = DepositService.forecast(db, monthly)
+def calculator(monthly: Decimal | None = None, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    rows = DepositService.forecast(db, ws, monthly)
     return {
         "rows": [
             {

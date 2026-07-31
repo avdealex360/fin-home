@@ -48,10 +48,10 @@ def _money(x) -> str:
     return f"{float(x):,.0f}".replace(",", " ")
 
 
-def _category_keyboard(db: Session, tx_id: int) -> dict:
+def _category_keyboard(db: Session, ws_id: int, tx_id: int) -> dict:
     cats = (
         db.query(Category)
-        .filter(Category.is_hidden.is_(False), Category.group != "income")
+        .filter(Category.workspace_id == ws_id, Category.is_hidden.is_(False), Category.group != "income")
         .order_by(Category.sort_order, Category.id)
         .all()
     )
@@ -89,10 +89,10 @@ def handle_update(db: Session, update: dict) -> None:
             send_message(token, chat_id, _HELP, reply_markup=_COMMANDS_KB)
             return
         if text == "/stats":
-            send_message(token, chat_id, build_digest(db), reply_markup=_COMMANDS_KB)
+            send_message(token, chat_id, build_digest(db, sender.workspace_id), reply_markup=_COMMANDS_KB)
             return
         if text == "/undo":
-            _handle_undo(db, token, chat_id, tg_id)
+            _handle_undo(db, token, chat_id, tg_id, sender.workspace_id)
             return
         if not text:
             return
@@ -104,22 +104,30 @@ def handle_update(db: Session, update: dict) -> None:
 
 
 def _handle_text(db, token, chat_id, tg_id, sender, text) -> None:
+    ws_id = sender.workspace_id
     ctx = ParseContext(
         categories=[
             {"id": c.id, "name": c.name, "group": c.group}
-            for c in db.query(Category).filter(Category.is_hidden.is_(False)).all()
+            for c in db.query(Category)
+            .filter(Category.workspace_id == ws_id, Category.is_hidden.is_(False))
+            .all()
         ],
-        users=[u.name for u in db.query(AppUser).filter(AppUser.is_active.is_(True)).all()],
+        users=[
+            u.name
+            for u in db.query(AppUser)
+            .filter(AppUser.workspace_id == ws_id, AppUser.is_active.is_(True))
+            .all()
+        ],
         sender_name=sender.name,
         today=date.today(),
-        currency=get_setting(db, "currency", "RUB"),
+        currency=get_setting(db, ws_id, "currency", "RUB"),
     )
     entries, provider = parse_with_fallback(db, text, ctx)
     if not entries:
         send_message(token, chat_id, "Не смог разобрать 🤔 Попробуй иначе: «кофе 360, магазин 1560».")
         return
 
-    txs = create_transactions(db, entries, sender, source_text=text)
+    txs = create_transactions(db, ws_id, entries, sender, source_text=text)
     _LAST_BATCH[tg_id] = [t.id for t in txs]
 
     total = sum(t.amount for t in txs)
@@ -139,16 +147,18 @@ def _handle_text(db, token, chat_id, tg_id, sender, text) -> None:
             send_message(
                 token, chat_id,
                 f"❓ Категория для «{_money(t.amount)} ₽ — {label}»?",
-                reply_markup=_category_keyboard(db, t.id),
+                reply_markup=_category_keyboard(db, ws_id, t.id),
             )
 
 
-def _handle_undo(db, token, chat_id, tg_id) -> None:
+def _handle_undo(db, token, chat_id, tg_id, ws_id) -> None:
     ids = _LAST_BATCH.pop(tg_id, [])
     if not ids:
         send_message(token, chat_id, "Нечего отменять.", reply_markup=_COMMANDS_KB)
         return
-    db.query(Transaction).filter(Transaction.id.in_(ids)).delete(synchronize_session=False)
+    db.query(Transaction).filter(
+        Transaction.id.in_(ids), Transaction.workspace_id == ws_id
+    ).delete(synchronize_session=False)
     db.commit()
     send_message(token, chat_id, f"↩️ Удалено операций: {len(ids)}.", reply_markup=_COMMANDS_KB)
 
@@ -161,7 +171,8 @@ def _handle_callback(db, cb) -> None:
     tg_id = str(cb["from"]["id"])
     chat_id = cb.get("message", {}).get("chat", {}).get("id", tg_id)
     data = cb.get("data", "")
-    if _sender(db, tg_id) is None:
+    sender = _sender(db, tg_id)
+    if sender is None:
         answer_callback_query(token, cb_id, "Нет доступа")
         return
     if data.startswith("setcat:"):
@@ -172,6 +183,12 @@ def _handle_callback(db, cb) -> None:
         except (ValueError, KeyError):
             answer_callback_query(token, cb_id, "")
             return
+        # Ownership: both rows must belong to the sender's workspace.
+        ws_id = sender.workspace_id
+        if tx and tx.workspace_id != ws_id:
+            tx = None
+        if cat and cat.workspace_id != ws_id:
+            cat = None
         if not tx or not cat:
             answer_callback_query(token, cb_id, "Операция не найдена")
             return

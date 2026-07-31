@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, type Transaction } from './lib/api'
-  import { authenticated, route, showToast, invalidate, period } from './lib/stores'
+  import { authenticated, me, route, showToast, invalidate, period } from './lib/stores'
   import { money, monthName } from './lib/format'
   import BottomNav from './lib/components/BottomNav.svelte'
   import SideNav from './lib/components/SideNav.svelte'
@@ -21,6 +21,7 @@
   import Categories from './routes/Categories.svelte'
   import Transactions from './routes/Transactions.svelte'
   import Integrations from './routes/Integrations.svelte'
+  import Admin from './routes/Admin.svelte'
 
   let onboarded = $state<boolean | null>(null)
   let bootError = $state<string | null>(null)
@@ -32,7 +33,10 @@
   function checkAuth() {
     bootError = null
     api.authMe()
-      .then((s) => authenticated.set(s.authenticated))
+      .then((s) => {
+        me.set(s)
+        authenticated.set(s.authenticated)
+      })
       .catch((e) => (bootError = (e as Error).message || 'Не удалось загрузить приложение'))
   }
   function checkOnboarding() {
@@ -77,6 +81,7 @@
     faq: { title: 'Вопросы', sub: 'Как считаются цифры', period: false },
     categories: { title: 'Категории', sub: 'Названия, иконки и группы', period: false },
     integrations: { title: 'Интеграции', sub: 'Telegram-бот и импорт', period: false },
+    admin: { title: 'Админка', sub: 'Пространства, аккаунты и инвайты', period: false },
   }
   let head = $derived(TITLES[$route] ?? TITLES.dashboard)
 
@@ -146,8 +151,10 @@
         <Categories />
       {:else if $route === 'transactions'}
         <Transactions />
-      {:else if $route === 'integrations'}
+      {:else if $route === 'integrations' && $me?.is_admin}
         <Integrations />
+      {:else if $route === 'admin' && $me?.is_admin}
+        <Admin />
       {:else}
         <Dashboard />
       {/if}

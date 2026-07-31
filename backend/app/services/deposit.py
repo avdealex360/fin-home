@@ -13,27 +13,27 @@ class DepositService:
     touches transactions, categories, or the 50/30/20 budget."""
 
     @staticmethod
-    def get_settings(db: Session) -> dict:
+    def get_settings(db: Session, ws_id: int) -> dict:
         from app.services.deposit_calc import parse_rate_schedule
 
-        rate = Decimal(get_setting(db, "deposit_rate", "17.5") or "0")
-        schedule_raw = get_setting(db, "deposit_rate_schedule", "")
-        start_raw = get_setting(db, "deposit_start_date", "")
+        rate = Decimal(get_setting(db, ws_id, "deposit_rate", "17.5") or "0")
+        schedule_raw = get_setting(db, ws_id, "deposit_rate_schedule", "")
+        start_raw = get_setting(db, ws_id, "deposit_start_date", "")
         return {
             "rate": rate,
-            "cap_day": int(get_setting(db, "deposit_cap_day", "18") or "18"),
+            "cap_day": int(get_setting(db, ws_id, "deposit_cap_day", "18") or "18"),
             "start_date": date.fromisoformat(start_raw) if start_raw else None,
             "rate_schedule": parse_rate_schedule(schedule_raw, rate),
-            "term_months": int(get_setting(db, "deposit_term_months", "12") or "12"),
-            "monthly_contribution": Decimal(get_setting(db, "deposit_monthly_target", "0") or "0"),
-            "initial_lump": Decimal(get_setting(db, "deposit_initial_lump", "0") or "0"),
+            "term_months": int(get_setting(db, ws_id, "deposit_term_months", "12") or "12"),
+            "monthly_contribution": Decimal(get_setting(db, ws_id, "deposit_monthly_target", "0") or "0"),
+            "initial_lump": Decimal(get_setting(db, ws_id, "deposit_initial_lump", "0") or "0"),
         }
 
     @staticmethod
-    def forecast(db: Session, monthly_contribution: Decimal | None = None) -> list:
+    def forecast(db: Session, ws_id: int, monthly_contribution: Decimal | None = None) -> list:
         from app.services.deposit_calc import add_months, build_forecast
 
-        s = DepositService.get_settings(db)
+        s = DepositService.get_settings(db, ws_id)
         start = s["start_date"] or date.today()
         target_date = add_months(start, s["term_months"])
         monthly = monthly_contribution if monthly_contribution is not None else s["monthly_contribution"]

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import (
+    admin,
     analytics,
     auth,
     debts,
@@ -19,9 +20,9 @@ from app.api import (
 )
 from app.db import SessionLocal
 from app.migrations import run_migrations
-from app.seed import ensure_common_user, ensure_savings_category, ensure_settings
+from app.seed import ensure_admin_account, ensure_startup_data
 from app.services.ai_trace import LOG_FILE, trace_block
-from app.services.auth import SESSION_COOKIE, is_valid_session
+from app.services.auth import SESSION_COOKIE, session_account_id
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -35,9 +36,8 @@ async def lifespan(app: FastAPI):
     run_migrations()
     db = SessionLocal()
     try:
-        ensure_settings(db)
-        ensure_savings_category(db)
-        ensure_common_user(db)
+        ensure_admin_account(db)
+        ensure_startup_data(db)
     finally:
         db.close()
     build_id = _BUILD_ID.read_text(encoding="utf-8").strip() if _BUILD_ID.is_file() else "local"
@@ -67,9 +67,34 @@ _PUBLIC_API_PREFIXES = ("/api/auth", "/api/health", "/api/docs", "/api/openapi.j
 
 @app.middleware("http")
 async def require_session(request: Request, call_next):
+    """Validate the session cookie and resolve the account once per request.
+
+    request.state gets account_id / workspace_id / is_admin for downstream
+    dependencies (deps.ws_id, deps.require_admin). Public prefixes skip the
+    gate but still get the identity resolved when a cookie is present
+    (e.g. /api/auth/me)."""
     path = request.url.path
+    account_id = session_account_id(request.cookies.get(SESSION_COOKIE))
+    if account_id is not None:
+        from app.models import Account
+
+        db = SessionLocal()
+        try:
+            account = (
+                db.query(Account)
+                .filter(Account.id == account_id, Account.is_active.is_(True))
+                .first()
+            )
+        finally:
+            db.close()
+        if account:
+            request.state.account_id = account.id
+            request.state.workspace_id = account.workspace_id
+            request.state.is_admin = account.is_admin
+        else:
+            account_id = None
     if path.startswith("/api") and not path.startswith(_PUBLIC_API_PREFIXES):
-        if not is_valid_session(request.cookies.get(SESSION_COOKIE)):
+        if account_id is None:
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)
 
@@ -91,6 +116,7 @@ async def no_cache_shell(request: Request, call_next):
 
 for router in (
     auth.router,
+    admin.router,
     meta.router,
     transactions.router,
     funds.router,

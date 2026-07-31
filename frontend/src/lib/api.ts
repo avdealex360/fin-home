@@ -33,6 +33,45 @@ export interface Transaction {
   fund_id: number | null
 }
 
+export interface AuthMe {
+  authenticated: boolean
+  username?: string
+  is_admin?: boolean
+  workspace?: { id: number; name: string }
+}
+
+export interface AdminAccount {
+  id: number
+  username: string
+  is_admin: boolean
+  is_active: boolean
+  created_at: string | null
+}
+
+export interface AdminWorkspace {
+  id: number
+  name: string
+  onboarded: string
+  created_at: string | null
+  tx_count: number
+  accounts: AdminAccount[]
+}
+
+export interface AdminOverview {
+  workspaces: AdminWorkspace[]
+}
+
+export interface AdminInvite {
+  id: number
+  token: string
+  label: string | null
+  workspace_id: number | null
+  workspace_name: string | null
+  expires_at: string | null
+  used_at: string | null
+  created_at: string | null
+}
+
 export interface TransactionListResponse {
   items: Transaction[]
   total: number
@@ -171,10 +210,23 @@ const ym = (year?: number, month?: number) =>
   year && month ? `?year=${year}&month=${month}` : ''
 
 export const api = {
-  authMe: () => req<{ authenticated: boolean }>('GET', '/auth/me'),
+  authMe: () => req<AuthMe>('GET', '/auth/me'),
   login: (username: string, password: string) =>
     req<{ ok: boolean }>('POST', '/auth/login', { username, password }),
   logout: () => req('POST', '/auth/logout'),
+  inviteInfo: (token: string) =>
+    req<{ valid: boolean; mode: 'join' | 'create'; workspace_name: string | null }>(
+      'GET', `/auth/invite/${token}`),
+  register: (b: { token: string; username: string; password: string; workspace_name?: string }) =>
+    req<{ ok: boolean; workspace: { id: number; name: string } }>('POST', '/auth/register', b),
+
+  adminOverview: () => req<AdminOverview>('GET', '/admin/overview'),
+  adminInvites: () => req<AdminInvite[]>('GET', '/admin/invites'),
+  adminCreateInvite: (b: { label?: string; workspace_id?: number | null; ttl_days?: number | null }) =>
+    req<AdminInvite>('POST', '/admin/invites', b),
+  adminRevokeInvite: (id: number) => req('DELETE', `/admin/invites/${id}`),
+  adminPatchAccount: (id: number, b: { is_active?: boolean; password?: string }) =>
+    req('PATCH', `/admin/accounts/${id}`, b),
 
   onboardingStatus: () => req<{ onboarded: boolean }>('GET', '/onboarding'),
   onboard: (mode: 'demo' | 'clean') => req('POST', '/onboarding', { mode }),

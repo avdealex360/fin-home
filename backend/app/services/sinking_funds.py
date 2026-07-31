@@ -22,17 +22,17 @@ class FundSummary:
 
 class SinkingFundService:
     @staticmethod
-    def list_active(db: Session) -> list[SinkingFund]:
+    def list_active(db: Session, ws_id: int) -> list[SinkingFund]:
         return (
             db.query(SinkingFund)
-            .filter(SinkingFund.is_active.is_(True))
+            .filter(SinkingFund.workspace_id == ws_id, SinkingFund.is_active.is_(True))
             .order_by(SinkingFund.id)
             .all()
         )
 
     @staticmethod
-    def get_summaries(db: Session) -> list[FundSummary]:
-        funds = SinkingFundService.list_active(db)
+    def get_summaries(db: Session, ws_id: int) -> list[FundSummary]:
+        funds = SinkingFundService.list_active(db, ws_id)
         result = []
         for fund in funds:
             progress = (
@@ -58,12 +58,17 @@ class SinkingFundService:
     @staticmethod
     def contribute(
         db: Session,
+        ws_id: int,
         fund_id: int,
         amount: Decimal,
         contrib_date: date,
         note: str | None = None,
     ) -> SinkingFund:
-        fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+        fund = (
+            db.query(SinkingFund)
+            .filter(SinkingFund.id == fund_id, SinkingFund.workspace_id == ws_id)
+            .first()
+        )
         if not fund:
             raise ValueError("Fund not found")
         fund.current_amount += amount
@@ -83,6 +88,7 @@ class SinkingFundService:
     @staticmethod
     def spend_from_fund(
         db: Session,
+        ws_id: int,
         fund_id: int,
         amount: Decimal,
         spend_date: date,
@@ -90,13 +96,18 @@ class SinkingFundService:
         user_id: int | None,
         comment: str | None,
     ) -> Transaction:
-        fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+        fund = (
+            db.query(SinkingFund)
+            .filter(SinkingFund.id == fund_id, SinkingFund.workspace_id == ws_id)
+            .first()
+        )
         if not fund:
             raise ValueError("Fund not found")
         fund.current_amount -= amount
         if fund.current_amount < 0:
             fund.current_amount = Decimal("0")
         tx = Transaction(
+            workspace_id=ws_id,
             type="expense",
             amount=amount,
             date=spend_date,
@@ -120,6 +131,7 @@ class SinkingFundService:
     @staticmethod
     def create(
         db: Session,
+        ws_id: int,
         name: str,
         target_amount: Decimal,
         monthly_contribution: Decimal,
@@ -128,6 +140,7 @@ class SinkingFundService:
         is_rolling: bool = False,
     ) -> SinkingFund:
         fund = SinkingFund(
+            workspace_id=ws_id,
             name=name,
             target_amount=target_amount,
             current_amount=Decimal("0"),
@@ -144,6 +157,7 @@ class SinkingFundService:
     @staticmethod
     def update(
         db: Session,
+        ws_id: int,
         fund_id: int,
         name: str,
         target_amount: Decimal,
@@ -152,7 +166,11 @@ class SinkingFundService:
         is_rolling: bool = False,
         group: str | None = None,
     ) -> SinkingFund:
-        fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+        fund = (
+            db.query(SinkingFund)
+            .filter(SinkingFund.id == fund_id, SinkingFund.workspace_id == ws_id)
+            .first()
+        )
         if not fund:
             raise ValueError("Fund not found")
         fund.name = name
@@ -167,8 +185,12 @@ class SinkingFundService:
         return fund
 
     @staticmethod
-    def delete(db: Session, fund_id: int) -> None:
-        fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+    def delete(db: Session, ws_id: int, fund_id: int) -> None:
+        fund = (
+            db.query(SinkingFund)
+            .filter(SinkingFund.id == fund_id, SinkingFund.workspace_id == ws_id)
+            .first()
+        )
         if fund:
             fund.is_active = False
             db.commit()

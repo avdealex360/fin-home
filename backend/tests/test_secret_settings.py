@@ -14,13 +14,6 @@ from app.services.settings_store import get_secret, set_secret, secret_is_set, m
 from app.services import auth as auth_module
 
 
-def _authenticate(client) -> None:
-    """Inject a valid session cookie so TestClient calls pass the auth middleware."""
-    from app.services.auth import SESSION_COOKIE, create_session_token
-
-    client.cookies.set(SESSION_COOKIE, create_session_token())
-
-
 @pytest.fixture
 def db():
     # StaticPool: TestClient dispatches requests via a worker thread, and a plain
@@ -72,27 +65,25 @@ def test_secret_excluded_from_export(db):
     assert get_secret(db, "secret.tg_bot_token") == "supersecret"
 
 
-def test_integrations_get_reports_flags_not_raw(db):
-    set_secret(db, "secret.yandex_api_key", "yakey")
-    app.dependency_overrides[get_db] = lambda: db
-    client = TestClient(app)
-    _authenticate(client)
+def test_integrations_get_reports_flags_not_raw(api):
+    client = api.client
+    s = api.Session()
+    set_secret(s, "secret.yandex_api_key", "yakey")
+    s.close()
     r = client.get("/api/settings/integrations")
-    app.dependency_overrides.clear()
     body = r.json()
     assert body["yandex_api_key"] is True
     assert body["gigachat_auth_key"] is False
     assert "yakey" not in json.dumps(body)
 
 
-def test_integrations_post_saves_nonempty(db):
-    app.dependency_overrides[get_db] = lambda: db
-    client = TestClient(app)
-    _authenticate(client)
+def test_integrations_post_saves_nonempty(api):
+    client = api.client
     client.post("/api/settings/integrations", json={
         "yandex_api_key": "newkey", "yandex_folder_id": "", "ai_primary_provider": "gigachat",
     })
-    app.dependency_overrides.clear()
-    assert get_secret(db, "secret.yandex_api_key") == "newkey"
+    s = api.Session()
+    assert get_secret(s, "secret.yandex_api_key") == "newkey"
     from app.services.settings_store import get_setting
-    assert get_setting(db, "ai_primary_provider") == "gigachat"
+    assert get_setting(s, None, "ai_primary_provider") == "gigachat"
+    s.close()

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.deps import ws_id
 from app.db import get_db
 from app.models import Debt, DebtPayment
 from app.serializers import debt_dict, debt_payment_dict
@@ -37,16 +38,22 @@ class PaymentBody(BaseModel):
 
 
 @router.get("")
-def list_debts(include_closed: bool = False, db: Session = Depends(get_db)):
+def list_debts(include_closed: bool = False, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     if include_closed:
-        debts = db.query(Debt).order_by(Debt.is_closed, Debt.id).all()
+        debts = (
+            db.query(Debt)
+            .filter(Debt.workspace_id == ws)
+            .order_by(Debt.is_closed, Debt.id)
+            .all()
+        )
         return [debt_dict(d) for d in debts]
-    return [debt_dict(d) for d in get_active_debts_sorted(db)]
+    return [debt_dict(d) for d in get_active_debts_sorted(db, ws)]
 
 
 @router.post("")
-def create_debt(body: DebtBody, db: Session = Depends(get_db)):
+def create_debt(body: DebtBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     d = Debt(
+        workspace_id=ws,
         name=body.name,
         total_amount=body.total_amount,
         remaining=body.remaining if body.remaining is not None else body.total_amount,
@@ -60,14 +67,14 @@ def create_debt(body: DebtBody, db: Session = Depends(get_db)):
     )
     db.add(d)
     db.commit()
-    compute_priority_ranks(db)
+    compute_priority_ranks(db, ws)
     db.refresh(d)
     return debt_dict(d)
 
 
 @router.patch("/{debt_id}")
-def update_debt(debt_id: int, body: DebtBody, db: Session = Depends(get_db)):
-    d = db.query(Debt).filter(Debt.id == debt_id).first()
+def update_debt(debt_id: int, body: DebtBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    d = db.query(Debt).filter(Debt.id == debt_id, Debt.workspace_id == ws).first()
     if not d:
         raise HTTPException(404, "debt not found")
     d.name = body.name
@@ -82,14 +89,14 @@ def update_debt(debt_id: int, body: DebtBody, db: Session = Depends(get_db)):
     d.grace_period_end = body.grace_period_end
     d.next_payment_date = body.next_payment_date
     db.commit()
-    compute_priority_ranks(db)
+    compute_priority_ranks(db, ws)
     db.refresh(d)
     return debt_dict(d)
 
 
 @router.delete("/{debt_id}")
-def delete_debt(debt_id: int, db: Session = Depends(get_db)):
-    d = db.query(Debt).filter(Debt.id == debt_id).first()
+def delete_debt(debt_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    d = db.query(Debt).filter(Debt.id == debt_id, Debt.workspace_id == ws).first()
     if d:
         db.delete(d)
         db.commit()
@@ -97,8 +104,8 @@ def delete_debt(debt_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{debt_id}/close")
-def close_debt(debt_id: int, db: Session = Depends(get_db)):
-    d = db.query(Debt).filter(Debt.id == debt_id).first()
+def close_debt(debt_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    d = db.query(Debt).filter(Debt.id == debt_id, Debt.workspace_id == ws).first()
     if not d:
         raise HTTPException(404, "debt not found")
     d.is_closed = True
@@ -109,8 +116,8 @@ def close_debt(debt_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{debt_id}/payment")
-def add_payment(debt_id: int, body: PaymentBody, db: Session = Depends(get_db)):
-    d = db.query(Debt).filter(Debt.id == debt_id).first()
+def add_payment(debt_id: int, body: PaymentBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    d = db.query(Debt).filter(Debt.id == debt_id, Debt.workspace_id == ws).first()
     if not d:
         raise HTTPException(404, "debt not found")
     db.add(DebtPayment(debt_id=debt_id, amount=body.amount, date=body.date or date.today(), comment=body.comment))
@@ -123,10 +130,11 @@ def add_payment(debt_id: int, body: PaymentBody, db: Session = Depends(get_db)):
 
 
 @router.get("/{debt_id}/payments")
-def list_payments(debt_id: int, db: Session = Depends(get_db)):
+def list_payments(debt_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     rows = (
         db.query(DebtPayment)
-        .filter(DebtPayment.debt_id == debt_id)
+        .join(Debt, Debt.id == DebtPayment.debt_id)
+        .filter(DebtPayment.debt_id == debt_id, Debt.workspace_id == ws)
         .order_by(DebtPayment.date.desc())
         .all()
     )
@@ -134,8 +142,8 @@ def list_payments(debt_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{debt_id}/cost-analysis")
-def cost_analysis(debt_id: int, db: Session = Depends(get_db)):
-    analysis = debt_cost_analysis(db, debt_id)
+def cost_analysis(debt_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    analysis = debt_cost_analysis(db, ws, debt_id)
     if not analysis:
         raise HTTPException(404, "debt not found or closed")
     return analysis

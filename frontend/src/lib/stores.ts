@@ -1,7 +1,11 @@
 import { writable } from 'svelte/store'
+import type { AuthMe } from './api'
 
 // null = unknown yet (checking session), false = show login screen.
 export const authenticated = writable<boolean | null>(null)
+
+// Who is logged in (username, admin flag, workspace) — filled by checkAuth().
+export const me = writable<AuthMe | null>(null)
 
 const now = new Date()
 export const period = writable<{ year: number; month: number }>({

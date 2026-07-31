@@ -68,7 +68,7 @@ def build_providers(db: Session) -> list[AiProvider]:
     if giga_key:
         available["gigachat"] = GigaChatProvider(giga_key)
 
-    primary = get_setting(db, "ai_primary_provider", "yandex")
+    primary = get_setting(db, None, "ai_primary_provider", "yandex")
     order = [primary] + [n for n in ("yandex", "gigachat") if n != primary]
     return [available[n] for n in order if n in available]
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
+from app.api.deps import ws_id
 from app.db import get_db
 from app.models import Category, Transaction
 from app.serializers import transaction_dict
@@ -44,8 +45,9 @@ def list_transactions(
     limit: int = 20,
     offset: int = 0,
     db: Session = Depends(get_db),
+    ws: int = Depends(ws_id),
 ):
-    q = db.query(Transaction)
+    q = db.query(Transaction).filter(Transaction.workspace_id == ws)
     if year:
         q = q.filter(extract("year", Transaction.date) == year)
     if month:
@@ -102,8 +104,9 @@ def list_transactions(
 
 
 @router.post("")
-def create_transaction(body: TransactionBody, db: Session = Depends(get_db)):
+def create_transaction(body: TransactionBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     tx = Transaction(
+        workspace_id=ws,
         type=body.type,
         amount=body.amount,
         date=body.date or date.today(),
@@ -119,8 +122,14 @@ def create_transaction(body: TransactionBody, db: Session = Depends(get_db)):
 
 
 @router.patch("/{tx_id}")
-def update_transaction(tx_id: int, body: TransactionBody, db: Session = Depends(get_db)):
-    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+def update_transaction(
+    tx_id: int, body: TransactionBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)
+):
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.id == tx_id, Transaction.workspace_id == ws)
+        .first()
+    )
     if not tx:
         raise HTTPException(404, "transaction not found")
     tx.type = body.type
@@ -136,8 +145,12 @@ def update_transaction(tx_id: int, body: TransactionBody, db: Session = Depends(
 
 
 @router.delete("/{tx_id}")
-def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
-    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+def delete_transaction(tx_id: int, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.id == tx_id, Transaction.workspace_id == ws)
+        .first()
+    )
     if not tx:
         return {"ok": True}
     db.delete(tx)

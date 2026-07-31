@@ -59,9 +59,10 @@ def _fmt(amount: Decimal | float) -> str:
     return f"{float(amount):,.0f}".replace(",", " ")
 
 
-def _collect_stats(db: Session, today: date) -> dict:
+def _collect_stats(db: Session, ws_id: int, today: date) -> dict:
     year, month = today.year, today.month
     q = db.query(Transaction).filter(
+        Transaction.workspace_id == ws_id,
         Transaction.type == "expense",
         extract("year", Transaction.date) == year,
         extract("month", Transaction.date) == month,
@@ -73,6 +74,7 @@ def _collect_stats(db: Session, today: date) -> dict:
         db.query(Category.name, func.sum(Transaction.amount).label("s"))
         .join(Transaction, Transaction.category_id == Category.id)
         .filter(
+            Transaction.workspace_id == ws_id,
             Transaction.type == "expense",
             extract("year", Transaction.date) == year,
             extract("month", Transaction.date) == month,
@@ -85,6 +87,7 @@ def _collect_stats(db: Session, today: date) -> dict:
         db.query(Category.group, func.sum(Transaction.amount))
         .join(Transaction, Transaction.category_id == Category.id)
         .filter(
+            Transaction.workspace_id == ws_id,
             Transaction.type == "expense",
             extract("year", Transaction.date) == year,
             extract("month", Transaction.date) == month,
@@ -153,16 +156,16 @@ def _format_digest(stats_text: str, tip_text: str, tip_provider: str | None) -> 
     return f"{stats_text}\n\n💡 {tip_text}{footer}"
 
 
-def get_or_build(db: Session, now: datetime | None = None) -> str:
+def get_or_build(db: Session, ws_id: int, now: datetime | None = None) -> str:
     now = now or datetime.now()
     today = now.date()
     # Hourly bucket: the AI tip rotates every hour, stats below are always recomputed live.
     key = f"digest.{now.strftime('%Y-%m-%dT%H')}"
 
-    stats = _collect_stats(db, today)
+    stats = _collect_stats(db, ws_id, today)
     stats_text = _stats_text(stats)
 
-    cached = get_setting(db, key, "")
+    cached = get_setting(db, ws_id, key, "")
     if cached:
         data = json.loads(cached)
         return _format_digest(stats_text, data["tip_text"], data.get("tip_provider"))
@@ -170,6 +173,7 @@ def get_or_build(db: Session, now: datetime | None = None) -> str:
     tip_text, tip_provider = _build_tip(db, stats)
     set_setting(
         db,
+        ws_id,
         key,
         json.dumps(
             {"tip_text": tip_text, "tip_provider": tip_provider},

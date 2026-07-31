@@ -6,18 +6,23 @@ from sqlalchemy.orm import Session
 from app.models import Transaction
 
 
-def last_month_salary_rub(db: Session, year: int, month: int) -> Decimal | None:
+def last_month_salary_rub(db: Session, ws_id: int, year: int, month: int) -> Decimal | None:
     from app.util import _shift_month
 
     prev_year, prev_month = _shift_month(year, month, -1)
     from app.models import Category
 
-    salary_cat = db.query(Category).filter(Category.name == "Зарплата").first()
+    salary_cat = (
+        db.query(Category)
+        .filter(Category.workspace_id == ws_id, Category.name == "Зарплата")
+        .first()
+    )
     if not salary_cat:
         return None
     result = (
         db.query(func.coalesce(func.sum(Transaction.amount), 0))
         .filter(
+            Transaction.workspace_id == ws_id,
             Transaction.type == "income",
             Transaction.category_id == salary_cat.id,
             extract("year", Transaction.date) == prev_year,
@@ -29,10 +34,10 @@ def last_month_salary_rub(db: Session, year: int, month: int) -> Decimal | None:
 
 
 def salary_comparison(
-    db: Session, year: int, month: int, current_rub: Decimal
+    db: Session, ws_id: int, year: int, month: int, current_rub: Decimal
 ) -> tuple[Decimal | None, Decimal | None]:
     """Returns (last_month_rub, diff) where diff = current - last."""
-    last = last_month_salary_rub(db, year, month)
+    last = last_month_salary_rub(db, ws_id, year, month)
     if last is None:
         return None, None
     return last, current_rub - last

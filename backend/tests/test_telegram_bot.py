@@ -7,6 +7,7 @@ import httpx
 from app.db import Base
 from app.models import AppUser
 from app.serializers import user_dict
+from tests.conftest import WS, create_workspace
 from app.services import tg_client
 from app.services.tg_client import TgError
 
@@ -22,12 +23,13 @@ def db():
     )
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
+    create_workspace(session)  # id == WS
     yield session
     session.close()
 
 
 def test_appuser_has_telegram_id_and_serializes(db):
-    u = AppUser(name="Леша", telegram_id="12345")
+    u = AppUser(workspace_id=WS, name="Леша", telegram_id="12345")
     db.add(u)
     db.commit()
     d = user_dict(u)
@@ -63,8 +65,8 @@ from app.services.ai.base import ParsedEntry
 
 def _seed_people_and_cats(db):
     db.add_all([
-        Category(name="Кофе", group="wants", sort_order=1),
-        AppUser(name="Леша", telegram_id="111"),
+        Category(workspace_id=WS, name="Кофе", group="wants", sort_order=1),
+        AppUser(workspace_id=WS, name="Леша", telegram_id="111"),
     ])
     db.commit()
 
@@ -132,7 +134,7 @@ def test_answer_callback_query(monkeypatch):
 def test_button_text_triggers_stats(db, monkeypatch):
     _seed_people_and_cats(db)
     monkeypatch.setattr(telegram_bot, "get_secret", lambda d, k, default="": "tok")
-    monkeypatch.setattr(telegram_bot, "build_digest", lambda d: "ДАЙДЖЕСТ")
+    monkeypatch.setattr(telegram_bot, "build_digest", lambda d, ws: "ДАЙДЖЕСТ")
     sent = []
     monkeypatch.setattr(telegram_bot, "send_message",
                         lambda token, chat_id, text, reply_markup=None: sent.append(text))
@@ -164,7 +166,7 @@ def test_null_category_op_offers_keyboard(db, monkeypatch):
 
 def test_callback_sets_category(db, monkeypatch):
     _seed_people_and_cats(db)
-    tx = Transaction(type="expense", amount=Decimal("1840"), date=date.today(), user_id=None)
+    tx = Transaction(workspace_id=WS, type="expense", amount=Decimal("1840"), date=date.today(), user_id=None)
     db.add(tx)
     db.commit()
     db.refresh(tx)
@@ -181,7 +183,7 @@ def test_callback_sets_category(db, monkeypatch):
 
 def test_callback_rejects_unknown_sender(db, monkeypatch):
     _seed_people_and_cats(db)
-    tx = Transaction(type="expense", amount=Decimal("500"), date=date.today())
+    tx = Transaction(workspace_id=WS, type="expense", amount=Decimal("500"), date=date.today())
     db.add(tx)
     db.commit()
     db.refresh(tx)

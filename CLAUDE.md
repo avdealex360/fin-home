@@ -10,6 +10,8 @@ A personal family budget web app (Russian UI) implementing the **50/30/20 rule**
 
 > **v3 (June 2026):** rewritten from the original HTMX/Jinja2 app into a Svelte SPA + JSON API split. The frontend is a single-page app served as static files; the backend speaks JSON only. Auth is app-level: a login screen posts to `/api/auth/login`, which sets a signed httponly session cookie (`app/services/auth.py`); a middleware in `main.py` gates all `/api/*` except `/api/auth/*`, `/api/health`, and docs.
 
+> **v4 (July 2026): multi-tenancy.** `Account` (login: username + bcrypt, `is_admin`) belongs to a `Workspace`; every root entity (`AppUser`, `Category`, `Transaction`, `SinkingFund`, `Debt`, `MonthlyPlan`) carries `workspace_id`, and every endpoint/service filters by it (`deps.ws_id` reads `request.state`, filled by the auth middleware from the session cookie `{account_id}.{ts}.{hmac}`). `Setting` is `(workspace_id, key)`; `workspace_id NULL` = install-wide scope (`secret.*` keys, AI/bot toggles — one bot for all workspaces, routed by `AppUser.telegram_id` which stays globally unique). Registration is invite-only (`Invite`: single-use token; bound to a workspace = join it, unbound = a fresh workspace is created). Admin API `/api/admin/*` + UI `#/admin` (invites, accounts, workspaces overview). On first start `seed.ensure_admin_account` bootstraps the admin from `APP_USER`/`APP_PASSWORD_HASH` (or plain `APP_PASSWORD` in dev). `AppUser` remains a per-workspace payer label, not a login.
+
 ## Repo layout
 
 ```

@@ -32,17 +32,18 @@ class MonthlyTrend:
 
 class AnalyticsService:
     @staticmethod
-    def plan_vs_fact(db: Session, start: date, end: date) -> list[CategoryComparison]:
+    def plan_vs_fact(db: Session, ws_id: int, start: date, end: date) -> list[CategoryComparison]:
         month_pairs = months_in_range(start, end)
         plans = (
             db.query(MonthlyPlan)
+            .filter(MonthlyPlan.workspace_id == ws_id)
             .options(joinedload(MonthlyPlan.limits))
             .filter(or_(*(and_(MonthlyPlan.year == y, MonthlyPlan.month == m) for y, m in month_pairs)))
             .all()
         )
         categories = (
             db.query(Category)
-            .filter(Category.is_hidden.is_(False))
+            .filter(Category.workspace_id == ws_id, Category.is_hidden.is_(False))
             .order_by(Category.sort_order)
             .all()
         )
@@ -62,6 +63,7 @@ class AnalyticsService:
             fact = (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .filter(
+                    Transaction.workspace_id == ws_id,
                     Transaction.type == "expense",
                     Transaction.category_id == cat.id,
                     Transaction.date.between(start, end),
@@ -86,7 +88,7 @@ class AnalyticsService:
 
     @staticmethod
     def monthly_trends(
-        db: Session, months: int = 12, anchor: tuple[int, int] | None = None
+        db: Session, ws_id: int, months: int = 12, anchor: tuple[int, int] | None = None
     ) -> list[MonthlyTrend]:
         """`months` trailing months ending at `anchor` (defaults to current month).
 
@@ -103,6 +105,7 @@ class AnalyticsService:
             income = (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .filter(
+                    Transaction.workspace_id == ws_id,
                     Transaction.type == "income",
                     extract("year", Transaction.date) == y,
                     extract("month", Transaction.date) == m,
@@ -112,6 +115,7 @@ class AnalyticsService:
             expense = (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .filter(
+                    Transaction.workspace_id == ws_id,
                     Transaction.type == "expense",
                     extract("year", Transaction.date) == y,
                     extract("month", Transaction.date) == m,
@@ -122,6 +126,7 @@ class AnalyticsService:
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .join(Category)
                 .filter(
+                    Transaction.workspace_id == ws_id,
                     Transaction.type.in_(["expense", "transfer"]),
                     Category.group == "savings",
                     extract("year", Transaction.date) == y,
@@ -138,11 +143,12 @@ class AnalyticsService:
         return trends
 
     @staticmethod
-    def top_categories(db: Session, start: date, end: date, limit: int = 5) -> list[tuple[str, Decimal]]:
+    def top_categories(db: Session, ws_id: int, start: date, end: date, limit: int = 5) -> list[tuple[str, Decimal]]:
         rows = (
             db.query(Category.name, func.sum(Transaction.amount))
             .join(Transaction)
             .filter(
+                Transaction.workspace_id == ws_id,
                 Transaction.type == "expense",
                 Transaction.date.between(start, end),
             )
@@ -155,9 +161,9 @@ class AnalyticsService:
 
     @staticmethod
     def cumulative_trends(
-        db: Session, months: int = 12, anchor: tuple[int, int] | None = None
+        db: Session, ws_id: int, months: int = 12, anchor: tuple[int, int] | None = None
     ) -> list[dict]:
-        trends = AnalyticsService.monthly_trends(db, months, anchor=anchor)
+        trends = AnalyticsService.monthly_trends(db, ws_id, months, anchor=anchor)
         cum_income = Decimal("0")
         cum_expense = Decimal("0")
         cum_savings = Decimal("0")
@@ -177,7 +183,7 @@ class AnalyticsService:
         return result
 
     @staticmethod
-    def split_503020(db: Session, start: date, end: date) -> dict:
+    def split_503020(db: Session, ws_id: int, start: date, end: date) -> dict:
         from decimal import Decimal
         from app.models import Category, Transaction
         from app.services.dashboard import _savings_fund_contributions
@@ -186,20 +192,22 @@ class AnalyticsService:
             return Decimal(str((
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .join(Category, Category.id == Transaction.category_id)
-                .filter(Transaction.type == "expense", Category.group == group,
+                .filter(Transaction.workspace_id == ws_id,
+                        Transaction.type == "expense", Category.group == group,
                         Transaction.date.between(start, end))
                 .scalar()
             ) or "0"))
 
         income = Decimal(str((
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
-            .filter(Transaction.type == "income", Transaction.date.between(start, end))
+            .filter(Transaction.workspace_id == ws_id,
+                    Transaction.type == "income", Transaction.date.between(start, end))
             .scalar()
         ) or "0"))
 
         needs, wants = expense_for("needs"), expense_for("wants")
         fund_contrib = sum(
-            (_savings_fund_contributions(db, y, m) for y, m in months_in_range(start, end)),
+            (_savings_fund_contributions(db, ws_id, y, m) for y, m in months_in_range(start, end)),
             Decimal("0"),
         )
         savings = expense_for("savings") + fund_contrib

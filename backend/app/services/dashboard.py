@@ -71,14 +71,15 @@ def _usage_color(percent: float) -> str:
     return "red"
 
 
-def _savings_fund_contributions(db: Session, year: int, month: int) -> Decimal:
+def _savings_fund_contributions(db: Session, ws_id: int, year: int, month: int) -> Decimal:
     """Money moved into копилки this month — not a Transaction, so it's added on top
     of the savings-category spend to reflect real progress toward the savings target."""
     from app.models import SinkingFund, SinkingFundContribution
     fund = (
         db.query(func.coalesce(func.sum(SinkingFundContribution.amount), 0))
         .join(SinkingFund, SinkingFund.id == SinkingFundContribution.fund_id)
-        .filter(SinkingFund.group == "savings",
+        .filter(SinkingFund.workspace_id == ws_id,
+                SinkingFund.group == "savings",
                 extract("year", SinkingFundContribution.date) == year,
                 extract("month", SinkingFundContribution.date) == month)
         .scalar()
@@ -88,11 +89,15 @@ def _savings_fund_contributions(db: Session, year: int, month: int) -> Decimal:
 
 class DashboardService:
     @staticmethod
-    def get_month_summary(db: Session, year: int, month: int) -> MonthSummary:
+    def get_month_summary(db: Session, ws_id: int, year: int, month: int) -> MonthSummary:
         plan = (
             db.query(MonthlyPlan)
             .options(joinedload(MonthlyPlan.limits))
-            .filter(MonthlyPlan.year == year, MonthlyPlan.month == month)
+            .filter(
+                MonthlyPlan.workspace_id == ws_id,
+                MonthlyPlan.year == year,
+                MonthlyPlan.month == month,
+            )
             .first()
         )
         income_plan = plan.expected_income if plan else Decimal("0")
@@ -100,6 +105,7 @@ class DashboardService:
         income_fact = (
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
             .filter(
+                Transaction.workspace_id == ws_id,
                 Transaction.type == "income",
                 extract("year", Transaction.date) == year,
                 extract("month", Transaction.date) == month,
@@ -110,6 +116,7 @@ class DashboardService:
         total_spent = (
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
             .filter(
+                Transaction.workspace_id == ws_id,
                 Transaction.type == "expense",
                 extract("year", Transaction.date) == year,
                 extract("month", Transaction.date) == month,
@@ -119,14 +126,14 @@ class DashboardService:
 
         remaining = income_fact - total_spent
 
-        last_salary, salary_diff = salary_comparison(db, year, month, income_fact)
+        last_salary, salary_diff = salary_comparison(db, ws_id, year, month, income_fact)
 
         groups = []
         for group_name, percent in GROUP_PERCENTS.items():
-            group_limit = DashboardService._group_limit(db, plan, group_name, income_plan, percent)
-            spent = DashboardService._group_spent(db, year, month, group_name)
+            group_limit = DashboardService._group_limit(db, ws_id, plan, group_name, income_plan, percent)
+            spent = DashboardService._group_spent(db, ws_id, year, month, group_name)
             if group_name == "savings":
-                spent += _savings_fund_contributions(db, year, month)
+                spent += _savings_fund_contributions(db, ws_id, year, month)
             rem = group_limit - spent
             usage = float(spent / group_limit * 100) if group_limit > 0 else 0.0
             groups.append(
@@ -145,7 +152,7 @@ class DashboardService:
         savings_spent = next(g.spent for g in groups if g.name == "savings")
         savings_rate = float(savings_spent / income_fact * 100) if income_fact > 0 else 0.0
 
-        debts_raw = get_active_debts_sorted(db)
+        debts_raw = get_active_debts_sorted(db, ws_id)
         debts = []
         for debt_row in debts_raw:
             progress = (
@@ -178,7 +185,7 @@ class DashboardService:
                 )
             )
 
-        funds = SinkingFundService.get_summaries(db)
+        funds = SinkingFundService.get_summaries(db, ws_id)
 
         return MonthSummary(
             year=year,
@@ -199,13 +206,19 @@ class DashboardService:
     @staticmethod
     def _group_limit(
         db: Session,
+        ws_id: int,
         plan: MonthlyPlan | None,
         group: str,
         income_plan: Decimal,
         percent: int,
     ) -> Decimal:
         if plan and plan.limits:
-            cat_ids = [c.id for c in db.query(Category).filter(Category.group == group).all()]
+            cat_ids = [
+                c.id
+                for c in db.query(Category)
+                .filter(Category.workspace_id == ws_id, Category.group == group)
+                .all()
+            ]
             total = sum(
                 (lim.limit_amount + (lim.carried_over or Decimal("0")) for lim in plan.limits if lim.category_id in cat_ids),
                 Decimal("0"),
@@ -215,11 +228,12 @@ class DashboardService:
         return income_plan * Decimal(percent) / Decimal("100")
 
     @staticmethod
-    def _group_spent(db: Session, year: int, month: int, group: str) -> Decimal:
+    def _group_spent(db: Session, ws_id: int, year: int, month: int, group: str) -> Decimal:
         result = (
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
             .join(Category)
             .filter(
+                Transaction.workspace_id == ws_id,
                 Transaction.type == "expense",
                 Category.group == group,
                 extract("year", Transaction.date) == year,

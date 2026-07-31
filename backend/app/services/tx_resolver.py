@@ -60,13 +60,13 @@ def _comment_from_hint(hint: str, amount: Decimal) -> str | None:
     return text or None
 
 
-def _guess_category_id(db: Session, group: str, hint: str) -> int | None:
+def _guess_category_id(db: Session, ws_id: int, group: str, hint: str) -> int | None:
     hint_l = hint.lower()
     if not hint_l:
         return None
     cats = (
         db.query(Category)
-        .filter(Category.is_hidden.is_(False), Category.group == group)
+        .filter(Category.workspace_id == ws_id, Category.is_hidden.is_(False), Category.group == group)
         .order_by(Category.sort_order, Category.id)
         .all()
     )
@@ -81,6 +81,7 @@ def _guess_category_id(db: Session, group: str, hint: str) -> int | None:
 
 def resolve_category_id(
     db: Session,
+    ws_id: int,
     name: str | None,
     comment: str | None = None,
     *,
@@ -90,7 +91,11 @@ def resolve_category_id(
     if not blob.strip():
         return None
 
-    all_cats = db.query(Category).filter(Category.is_hidden.is_(False)).all()
+    all_cats = (
+        db.query(Category)
+        .filter(Category.workspace_id == ws_id, Category.is_hidden.is_(False))
+        .all()
+    )
 
     if name:
         name = _normalize_category_name(name) or name
@@ -98,7 +103,7 @@ def resolve_category_id(
         if name_l in _GROUP_TOKENS:
             group = _TOKEN_TO_GROUP.get(name_l)
             if group:
-                guessed = _guess_category_id(db, group, blob)
+                guessed = _guess_category_id(db, ws_id, group, blob)
                 if guessed:
                     return guessed
         else:
@@ -111,15 +116,15 @@ def resolve_category_id(
 
     # No valid name — try keyword guess on comment/hint only (default group needs)
     for group in ("needs", "wants", "savings"):
-        guessed = _guess_category_id(db, group, blob)
+        guessed = _guess_category_id(db, ws_id, group, blob)
         if guessed:
             return guessed
     return None
 
 
-def resolve_user_id(db: Session, person: str | None, sender: AppUser | None) -> int | None:
+def resolve_user_id(db: Session, ws_id: int, person: str | None, sender: AppUser | None) -> int | None:
     if person:
-        all_users = db.query(AppUser).all()
+        all_users = db.query(AppUser).filter(AppUser.workspace_id == ws_id).all()
         for user in all_users:
             if user.name.lower() == person.lower():
                 return user.id
@@ -132,6 +137,7 @@ def resolve_user_id(db: Session, person: str | None, sender: AppUser | None) -> 
 
 def create_transactions(
     db: Session,
+    ws_id: int,
     entries: list[ParsedEntry],
     sender: AppUser | None,
     source_text: str | None = None,
@@ -139,17 +145,18 @@ def create_transactions(
     created: list[Transaction] = []
     for e in entries:
         hint = _hint_from_source(e.amount, source_text or "")
-        cat_id = resolve_category_id(db, e.category, e.comment, hint=hint)
+        cat_id = resolve_category_id(db, ws_id, e.category, e.comment, hint=hint)
         comment = e.comment or _comment_from_hint(hint, e.amount)
         if e.category and cat_id is None:
             note = f"категория «{e.category}»?"
             comment = f"{comment} · {note}" if comment else note
         tx = Transaction(
+            workspace_id=ws_id,
             type=e.type,
             amount=e.amount,
             date=e.date or date.today(),
             category_id=cat_id,
-            user_id=resolve_user_id(db, e.person, sender),
+            user_id=resolve_user_id(db, ws_id, e.person, sender),
             comment=comment,
         )
         db.add(tx)

@@ -25,13 +25,18 @@ class PairAnalytics:
 
 class PairAnalyticsService:
     @staticmethod
-    def monthly_breakdown(db: Session, start: date, end: date) -> PairAnalytics:
-        users = db.query(AppUser).filter(AppUser.is_active.is_(True)).all()
+    def monthly_breakdown(db: Session, ws_id: int, start: date, end: date) -> PairAnalytics:
+        users = (
+            db.query(AppUser)
+            .filter(AppUser.workspace_id == ws_id, AppUser.is_active.is_(True))
+            .all()
+        )
         result_users: list[UserSpending] = []
 
         month_total = (
             db.query(func.coalesce(func.sum(Transaction.amount), 0))
             .filter(
+                Transaction.workspace_id == ws_id,
                 Transaction.type == "expense",
                 Transaction.date.between(start, end),
             )
@@ -42,6 +47,7 @@ class PairAnalyticsService:
             total = (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
                 .filter(
+                    Transaction.workspace_id == ws_id,
                     Transaction.type == "expense",
                     Transaction.user_id == user.id,
                     Transaction.date.between(start, end),
@@ -56,6 +62,7 @@ class PairAnalyticsService:
                 )
                 .join(Category, Transaction.category_id == Category.id)
                 .filter(
+                    Transaction.workspace_id == ws_id,
                     Transaction.type == "expense",
                     Transaction.user_id == user.id,
                     Transaction.date.between(start, end),

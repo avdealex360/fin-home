@@ -7,13 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401 — registers models with Base.metadata before create_all
 from app.db import Base
-
-
-def _authenticate(client) -> None:
-    """Inject a valid session cookie so TestClient calls pass the auth middleware."""
-    from app.services.auth import SESSION_COOKIE, create_session_token
-
-    client.cookies.set(SESSION_COOKIE, create_session_token())
+from tests.conftest import WS, create_workspace
 
 
 @pytest.fixture
@@ -22,6 +16,7 @@ def db():
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
+    create_workspace(session)  # id == WS
     yield session
     session.close()
 
@@ -34,7 +29,7 @@ def test_model_shape(db):
     assert not hasattr(m, "GoalContribution")
 
     # SinkingFund uses `group`, not `category_group`
-    fund = m.SinkingFund(name="Отпуск", target_amount=Decimal("50000"), group="savings")
+    fund = m.SinkingFund(workspace_id=WS, name="Отпуск", target_amount=Decimal("50000"), group="savings")
     db.add(fund)
     db.commit()
     assert fund.group == "savings"
@@ -44,13 +39,13 @@ def test_model_shape(db):
     assert not hasattr(m, "IncomeAllocation")
 
 
-from app.seed import load_demo_data, ensure_settings
+from app.seed import ensure_workspace_settings, load_demo_data
 from app.models import Category, SinkingFund, Setting
 
 
 def test_seed_has_savings_category_no_goals(db):
-    ensure_settings(db)
-    load_demo_data(db)
+    ensure_workspace_settings(db, WS)
+    load_demo_data(db, WS)
 
     groups = {c.group for c in db.query(Category).all()}
     assert "savings" in groups, "a savings category must exist so limits/spend can be tracked like needs/wants"
@@ -61,7 +56,12 @@ def test_seed_has_savings_category_no_goals(db):
     assert all(f.group in ("wants", "savings") for f in funds)
     assert any(f.group == "savings" for f in funds)
 
-    assert db.query(Setting).filter(Setting.key == "deposit_monthly_target").first() is not None
+    assert (
+        db.query(Setting)
+        .filter(Setting.workspace_id == WS, Setting.key == "deposit_monthly_target")
+        .first()
+        is not None
+    )
 
 
 from app.models import Transaction, MonthlyPlan
@@ -69,32 +69,33 @@ from app.services.sinking_funds import SinkingFundService
 
 
 def test_fund_create_and_spend_with_group(db):
-    f = SinkingFundService.create(db, name="Отпуск", target_amount=Decimal("100000"),
+    f = SinkingFundService.create(db, WS, name="Отпуск", target_amount=Decimal("100000"),
                                   monthly_contribution=Decimal("8000"), group="wants")
     assert f.group == "wants"
-    SinkingFundService.contribute(db, f.id, Decimal("8000"), date.today())
-    tx = SinkingFundService.spend_from_fund(db, f.id, Decimal("3000"), date.today(),
+    SinkingFundService.contribute(db, WS, f.id, Decimal("8000"), date.today())
+    tx = SinkingFundService.spend_from_fund(db, WS, f.id, Decimal("3000"), date.today(),
                                             category_id=None, user_id=None, comment=None)
     db.refresh(f)
     assert f.current_amount == Decimal("5000")
     assert tx.is_sinking_fund_spend and tx.fund_id == f.id
+    assert tx.workspace_id == WS
 
 
 def test_dashboard_savings_counts_fund_contributions(db):
     """Savings.spent must count копилка contributions — the вклад calculator has
     no ledger at all anymore, so it structurally cannot move this number."""
-    ensure_settings(db); load_demo_data(db)
+    ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.dashboard import DashboardService
-    from app.services.sinking_funds import SinkingFundService
 
     y, mth = date.today().year, date.today().month
-    db.add(Transaction(type="income", amount=Decimal("100000"), date=date.today())); db.commit()
+    db.add(Transaction(workspace_id=WS, type="income", amount=Decimal("100000"), date=date.today()))
+    db.commit()
 
     fund = db.query(SinkingFund).filter(SinkingFund.group == "savings").first()
     assert fund, "demo data must include a savings копилка"
-    SinkingFundService.contribute(db, fund.id, Decimal("5000"), date.today())
+    SinkingFundService.contribute(db, WS, fund.id, Decimal("5000"), date.today())
 
-    s = DashboardService.get_month_summary(db, y, mth)
+    s = DashboardService.get_month_summary(db, WS, y, mth)
     sav = next(g for g in s.groups if g.name == "savings")
     assert sav.spent == Decimal("5000")
     assert {g.name for g in s.groups} == {"needs", "wants", "savings"}
@@ -104,7 +105,7 @@ def test_dashboard_savings_counts_fund_contributions(db):
 def test_savings_category_limit_shows_up_in_group_limit(db):
     """A CategoryLimit on a savings-group category must reach Dashboard's group.limit,
     exactly like needs/wants — this was the bug: savings limits were entered but ignored."""
-    ensure_settings(db); load_demo_data(db)
+    ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.dashboard import DashboardService
     from app.services.plan import PlanService
 
@@ -112,73 +113,46 @@ def test_savings_category_limit_shows_up_in_group_limit(db):
     cat = db.query(Category).filter(Category.group == "savings").first()
     assert cat, "demo data must seed a savings category"
 
-    plan = PlanService.get_or_create_plan(db, y, mth)
-    PlanService.save_plan(db, y, mth, Decimal("100000"), category_limits={cat.id: Decimal("20000")})
+    PlanService.get_or_create_plan(db, WS, y, mth)
+    PlanService.save_plan(db, WS, y, mth, Decimal("100000"), category_limits={cat.id: Decimal("20000")})
 
-    s = DashboardService.get_month_summary(db, y, mth)
+    s = DashboardService.get_month_summary(db, WS, y, mth)
     sav = next(g for g in s.groups if g.name == "savings")
     assert sav.limit == Decimal("20000")
 
-    meter = PlanService.meter_503020(db, y, mth)
+    meter = PlanService.meter_503020(db, WS, y, mth)
     assert meter["savings"]["allocated"] == 20000.0
 
 
 def test_analytics_has_503020_split(db):
-    ensure_settings(db); load_demo_data(db)
+    ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.analytics import AnalyticsService
     from app.util import period_date_range
     y, mth = date.today().year, date.today().month
     start, end = period_date_range(y, mth, "month")
-    data = AnalyticsService.split_503020(db, start, end)
+    data = AnalyticsService.split_503020(db, WS, start, end)
     assert set(data.keys()) == {"needs", "wants", "savings"}
     assert set(data["needs"].keys()) == {"fact", "ideal", "percent"}
 
 
 def test_plan_meter_needs_target(db):
-    ensure_settings(db); load_demo_data(db)
+    ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.plan import PlanService
     y, mth = date.today().year, date.today().month
-    plan = PlanService.get_or_create_plan(db, y, mth)
+    plan = PlanService.get_or_create_plan(db, WS, y, mth)
     plan.expected_income = Decimal("100000"); db.commit()
 
-    meter = PlanService.meter_503020(db, y, mth)
+    meter = PlanService.meter_503020(db, WS, y, mth)
     assert abs(meter["needs"]["target"] - 50000) < 1
 
 
-def test_api_contract(tmp_path):
-    from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import app.models  # noqa: F401
-    import app.main as main
-    from app.db import Base, get_db
+def _demo(api):
+    api.client.post("/api/onboarding", json={"mode": "demo"})
 
-    # Use a file-based SQLite so connections work across threads
-    db_path = tmp_path / "test_api.db"
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    TestSession = sessionmaker(bind=engine)
 
-    # Seed data in one session
-    seed_session = TestSession()
-    ensure_settings(seed_session)
-    load_demo_data(seed_session)
-    seed_session.close()
-
-    # Override get_db to produce sessions from our test engine
-    def override_get_db():
-        db = TestSession()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    # point the app's DB dependency at our test sessions
-    main.app.dependency_overrides = {}
-    main.app.dependency_overrides[get_db] = override_get_db
-
-    client = TestClient(main.app)
-    _authenticate(client)
+def test_api_contract(api):
+    client = api.client
+    _demo(api)
 
     assert client.get("/api/goals").status_code in (404, 405)
 
@@ -198,41 +172,10 @@ def test_api_contract(tmp_path):
     assert summary["income_fact"] == 30000.0
     assert "unallocated" not in summary
 
-    # Cleanup
-    main.app.dependency_overrides = {}
-    engine.dispose()
 
-
-def test_patch_fund_updates_group(tmp_path):
-    from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import app.models  # noqa: F401
-    import app.main as main
-    from app.db import Base, get_db
-
-    db_path = tmp_path / "test_fund_group.db"
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    TestSession = sessionmaker(bind=engine)
-
-    seed_session = TestSession()
-    ensure_settings(seed_session)
-    load_demo_data(seed_session)
-    seed_session.close()
-
-    def override_get_db():
-        db = TestSession()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    main.app.dependency_overrides = {}
-    main.app.dependency_overrides[get_db] = override_get_db
-
-    client = TestClient(main.app)
-    _authenticate(client)
+def test_patch_fund_updates_group(api):
+    client = api.client
+    _demo(api)
 
     funds = client.get("/api/funds").json()
     assert funds, "demo data must create at least one fund"
@@ -250,47 +193,17 @@ def test_patch_fund_updates_group(tmp_path):
     assert resp.status_code == 200, f"PATCH failed: {resp.text}"
     assert resp.json()["group"] == new_group
 
-    # Confirm via GET
     updated = next(f for f in client.get("/api/funds").json() if f["id"] == fund_id)
     assert updated["group"] == new_group
 
-    main.app.dependency_overrides = {}
-    engine.dispose()
 
-
-def test_deposit_is_a_standalone_calculator(tmp_path):
+def test_deposit_is_a_standalone_calculator(api):
     """Deposit settings persist (rate schedule, start date, term, contributions)
     and the calculator forecasts over the whole term — with no balance/contribute
     concept left, since it never touches real money or the budget."""
-    from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import app.models  # noqa: F401
+    client = api.client
+    _demo(api)
     import app.main as main
-    from app.db import Base, get_db
-
-    db_path = tmp_path / "test_deposit_calculator.db"
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    TestSession = sessionmaker(bind=engine)
-
-    seed_session = TestSession()
-    ensure_settings(seed_session)
-    load_demo_data(seed_session)
-    seed_session.close()
-
-    def override_get_db():
-        db = TestSession()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    main.app.dependency_overrides = {}
-    main.app.dependency_overrides[get_db] = override_get_db
-
-    client = TestClient(main.app)
-    _authenticate(client)
 
     assert "/api/deposit/contribute" not in {r.path for r in main.app.routes if hasattr(r, "path")}
 
@@ -314,41 +227,12 @@ def test_deposit_is_a_standalone_calculator(tmp_path):
     assert len(calc["rows"]) == 12
     assert calc["final_balance"] > 100000.0 + 5000 * 11, "interest + contributions must grow the total"
 
-    main.app.dependency_overrides = {}
-    engine.dispose()
 
-
-def test_transactions_list_pagination_filter_sort(tmp_path):
+def test_transactions_list_pagination_filter_sort(api):
     """GET /api/transactions supports offset pagination, type/category filters,
     and sorting — needed by the full transactions history page."""
-    from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import app.models  # noqa: F401
-    import app.main as main
-    from app.db import Base, get_db
-
-    db_path = tmp_path / "test_tx_list.db"
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    TestSession = sessionmaker(bind=engine)
-
-    seed_session = TestSession()
-    ensure_settings(seed_session)
-    load_demo_data(seed_session)
-    seed_session.close()
-
-    def override_get_db():
-        db = TestSession()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    main.app.dependency_overrides = {}
-    main.app.dependency_overrides[get_db] = override_get_db
-    client = TestClient(main.app)
-    _authenticate(client)
+    client = api.client
+    _demo(api)
 
     cat_id = client.get("/api/categories").json()[0]["id"]
     for i, amount in enumerate([1000, 2000, 3000]):
@@ -376,41 +260,12 @@ def test_transactions_list_pagination_filter_sort(tmp_path):
     by_other_category = client.get(f"/api/transactions?category_id={other_cat}").json()
     assert by_other_category["total"] == 0
 
-    main.app.dependency_overrides = {}
-    engine.dispose()
 
-
-def test_analytics_period_switch_aggregates_quarter_and_year(tmp_path):
+def test_analytics_period_switch_aggregates_quarter_and_year(api):
     """period=quarter/year must sum transactions across the whole range, not
     just the anchor month — this is what backs the Analytics period toggle."""
-    from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import app.models  # noqa: F401
-    import app.main as main
-    from app.db import Base, get_db
-
-    db_path = tmp_path / "test_analytics_period.db"
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    TestSession = sessionmaker(bind=engine)
-
-    seed_session = TestSession()
-    ensure_settings(seed_session)
-    load_demo_data(seed_session)
-    seed_session.close()
-
-    def override_get_db():
-        db = TestSession()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    main.app.dependency_overrides = {}
-    main.app.dependency_overrides[get_db] = override_get_db
-    client = TestClient(main.app)
-    _authenticate(client)
+    client = api.client
+    _demo(api)
 
     cat_id = client.get("/api/categories").json()[0]["id"]
     # One expense in each month of Q1 2026.
@@ -430,6 +285,3 @@ def test_analytics_period_switch_aggregates_quarter_and_year(tmp_path):
     assert quarter_top.get(cat_name) == 3000
     assert quarter_resp["range"]["start"] == "2026-01-01"
     assert quarter_resp["range"]["end"] == "2026-03-31"
-
-    main.app.dependency_overrides = {}
-    engine.dispose()

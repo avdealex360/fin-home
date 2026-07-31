@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, type FundSummary, type DebtSummary, type User } from '../lib/api'
-  import { authenticated, dataVersion, invalidate, showToast, showHelp } from '../lib/stores'
+  import { authenticated, dataVersion, invalidate, me, showToast, showHelp } from '../lib/stores'
   import { money } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
 
@@ -99,13 +99,18 @@
 
   const groupLabel = (g: 'wants' | 'savings') => (g === 'wants' ? 'Желания' : 'Сбережения')
 
-  const LINKS = [
+  let LINKS = $derived([
     { href: '#/transactions', icon: 'ti-list', name: 'Все операции', meta: 'История, фильтры, экспорт' },
     { href: '#/categories', icon: 'ti-category', name: 'Категории', meta: 'Названия, иконки и группы' },
     { href: '#/deposit', icon: 'ti-building-bank', name: 'Калькулятор вклада', meta: 'Капитализация и ставки по годам' },
-    { href: '#/integrations', icon: 'ti-robot', name: 'Телеграм-бот и AI', meta: 'Запись трат сообщением' },
+    ...($me?.is_admin
+      ? [
+          { href: '#/integrations', icon: 'ti-robot', name: 'Телеграм-бот и AI', meta: 'Запись трат сообщением' },
+          { href: '#/admin', icon: 'ti-shield-lock', name: 'Админка', meta: 'Пространства, аккаунты, инвайты' },
+        ]
+      : []),
     { href: '#/faq', icon: 'ti-help', name: 'Как это работает', meta: 'Частые вопросы' },
-  ]
+  ])
 
   const GLOSSARY = [
     { term: 'Свободно до конца месяца', def: 'Сколько ещё можно потратить, не залезая в накопления.', formula: 'доход − расходы − отложено' },
