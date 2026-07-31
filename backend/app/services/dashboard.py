@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, MonthlyPlan, Transaction
 from app.seed import GROUP_PERCENTS
-from app.services.allocation import get_unallocated_total, is_month_fully_allocated
 from app.services.debts import get_active_debts_sorted, monthly_interest_cost
 from app.services.exchange import salary_comparison
 from app.services.sinking_funds import FundSummary, SinkingFundService
@@ -53,8 +52,6 @@ class MonthSummary:
     remaining: Decimal
     savings_rate: float
     savings_target_rate: float = 20.0
-    unallocated: Decimal = Decimal("0")
-    is_fully_allocated: bool = True
     salary_last_month: Decimal | None = None
     salary_diff: Decimal | None = None
     groups: list[GroupSummary] = field(default_factory=list)
@@ -121,8 +118,6 @@ class DashboardService:
         ) or Decimal("0")
 
         remaining = income_fact - total_spent
-        unallocated = get_unallocated_total(db, year, month)
-        fully_allocated = is_month_fully_allocated(db, year, month)
 
         last_salary, salary_diff = salary_comparison(db, year, month, income_fact)
 
@@ -193,8 +188,6 @@ class DashboardService:
             total_spent=total_spent,
             remaining=remaining,
             savings_rate=savings_rate,
-            unallocated=unallocated,
-            is_fully_allocated=fully_allocated,
             salary_last_month=last_salary,
             salary_diff=salary_diff,
             groups=groups,

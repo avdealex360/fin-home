@@ -40,9 +40,8 @@ def test_model_shape(db):
     assert fund.group == "savings"
     assert not hasattr(fund, "category_group")
 
-    # IncomeAllocation no longer has to_deposit — deposit is a standalone calculator
-    a = m.IncomeAllocation(income_tx_id=1, amount=Decimal("5"), allocation_level=4)
-    assert not hasattr(a, "to_deposit")
+    # Income allocation feature is gone
+    assert not hasattr(m, "IncomeAllocation")
 
 
 from app.seed import load_demo_data, ensure_settings
@@ -66,38 +65,7 @@ def test_seed_has_savings_category_no_goals(db):
 
 
 from app.models import Transaction, MonthlyPlan
-from app.services.allocation import (
-    get_allocation_buckets, allocate_income, AllocationInput, get_unallocated_for_tx,
-)
 from app.services.sinking_funds import SinkingFundService
-
-
-def test_buckets_mirror_503020(db):
-    ensure_settings(db); load_demo_data(db)
-    y, mth = date.today().year, date.today().month
-    buckets = get_allocation_buckets(db, y, mth, Decimal("100000"))
-    groups = {b.group for b in buckets}
-    assert groups == {"needs", "wants", "savings"}
-    by = {b.group: b for b in buckets}
-    assert by["needs"].percent == 50 and by["needs"].target_amount == Decimal("50000")
-    assert by["wants"].percent == 30
-    assert by["savings"].percent == 20
-    # savings bucket now offers its category (e.g. «Пополнение вклада») like needs/wants,
-    # not a special "deposit" destination — deposit is a standalone calculator now.
-    assert any(i.kind == "category" for i in by["savings"].items)
-    assert not any(i.kind == "deposit" for i in by["savings"].items)
-
-
-def test_allocate_to_savings_category(db):
-    ensure_settings(db); load_demo_data(db)
-    savings_cat = db.query(Category).filter(Category.group == "savings").first()
-    assert savings_cat, "demo data must seed a savings category"
-    tx = Transaction(type="income", amount=Decimal("20000"), date=date.today())
-    db.add(tx); db.commit()
-    allocate_income(db, tx.id, [AllocationInput(category_id=savings_cat.id, amount=Decimal("20000"), group="savings")])
-    db.refresh(tx)
-    assert tx.is_fully_allocated
-    assert get_unallocated_for_tx(db, tx) == Decimal("0")
 
 
 def test_fund_create_and_spend_with_group(db):
@@ -220,22 +188,15 @@ def test_api_contract(tmp_path):
     dep = client.get("/api/deposit").json()
     assert "term_months" in dep and "balance" not in dep
 
+    # Income lands on the balance as-is — no allocation step, no leftover fields.
     tx = client.post("/api/transactions", json={"type": "income", "amount": 30000,
                                                 "date": str(date.today())}).json()
-    view = client.get(f"/api/allocation/{tx['id']}").json()
-    assert "buckets" in view
+    assert "unallocated" not in tx and "is_fully_allocated" not in tx
+    assert client.get(f"/api/allocation/{tx['id']}").status_code in (404, 405)
 
-    savings_cat = next(
-        item for b in view["buckets"] if b["group"] == "savings" for item in b["items"] if item["kind"] == "category"
-    )
-    alloc_resp = client.post(f"/api/allocation/{tx['id']}", json={
-        "allocations": [{"category_id": savings_cat["id"], "amount": 30000, "group": "savings"}]
-    })
-    assert alloc_resp.status_code == 200, alloc_resp.text
-    assert alloc_resp.json()["is_fully_allocated"] is True
-
-    view_after = client.get(f"/api/allocation/{tx['id']}").json()
-    assert "to_deposit" not in view_after["existing"][0]
+    summary = client.get("/api/dashboard").json()
+    assert summary["income_fact"] == 30000.0
+    assert "unallocated" not in summary
 
     # Cleanup
     main.app.dependency_overrides = {}

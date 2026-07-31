@@ -26,7 +26,6 @@ class Category(Base):
     group: Mapped[str] = mapped_column(String(20), nullable=False)  # needs, wants, savings, income
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    allocation_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
     limits: Mapped[list["CategoryLimit"]] = relationship(back_populates="category")
@@ -64,22 +63,6 @@ class SinkingFundContribution(Base):
     fund: Mapped["SinkingFund"] = relationship(back_populates="contributions")
 
 
-class IncomeAllocation(Base):
-    __tablename__ = "income_allocations"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    income_tx_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), nullable=False)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
-    fund_id: Mapped[int | None] = mapped_column(ForeignKey("sinking_funds.id"), nullable=True)
-    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    allocated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    allocation_level: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    income_tx: Mapped["Transaction"] = relationship(back_populates="allocations")
-    category: Mapped["Category | None"] = relationship()
-    fund: Mapped["SinkingFund | None"] = relationship()
-
-
 class Transaction(Base):
     __tablename__ = "transactions"
 
@@ -90,7 +73,6 @@ class Transaction(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("app_users.id"), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_fully_allocated: Mapped[bool] = mapped_column(Boolean, default=False)
     is_sinking_fund_spend: Mapped[bool] = mapped_column(Boolean, default=False)
     fund_id: Mapped[int | None] = mapped_column(ForeignKey("sinking_funds.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -98,9 +80,6 @@ class Transaction(Base):
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
     user: Mapped["AppUser | None"] = relationship(back_populates="transactions")
     fund: Mapped["SinkingFund | None"] = relationship()
-    allocations: Mapped[list["IncomeAllocation"]] = relationship(
-        back_populates="income_tx", cascade="all, delete-orphan"
-    )
 
 
 class MonthlyPlan(Base):

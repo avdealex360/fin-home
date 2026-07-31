@@ -9,7 +9,6 @@ export interface Category {
   group: 'needs' | 'wants' | 'savings' | 'income'
   is_hidden: boolean
   sort_order: number
-  allocation_level: number | null
   icon: string
   color: string
 }
@@ -31,9 +30,7 @@ export interface Transaction {
   user_id: number | null
   user_name: string | null
   comment: string | null
-  is_fully_allocated: boolean
   fund_id: number | null
-  unallocated?: number
 }
 
 export interface TransactionListResponse {
@@ -105,8 +102,6 @@ export interface MonthSummary {
   remaining: number
   savings_rate: number
   savings_target_rate: number
-  unallocated: number
-  is_fully_allocated: boolean
   salary_last_month: number | null
   salary_diff: number | null
   groups: GroupSummary[]
@@ -115,28 +110,6 @@ export interface MonthSummary {
   has_plan: boolean
 }
 
-export interface AllocationItem {
-  id: number
-  name: string
-  kind: 'category' | 'fund'
-  suggested_amount: number
-  group: 'needs' | 'wants' | 'savings'
-}
-
-export interface AllocationBucket {
-  group: 'needs' | 'wants' | 'savings'
-  label: string
-  percent: number
-  target_amount: number
-  items: AllocationItem[]
-}
-
-export interface AllocationView {
-  transaction: { id: number; amount: number; date: string; is_fully_allocated: boolean }
-  unallocated: number
-  buckets: AllocationBucket[]
-  existing: { category_id: number | null; fund_id: number | null; amount: number }[]
-}
 
 export interface Deposit {
   rate: number
@@ -248,12 +221,6 @@ export const api = {
   updateTransaction: (id: number, b: Partial<Transaction>) =>
     req<Transaction>('PATCH', `/transactions/${id}`, b),
   deleteTransaction: (id: number) => req('DELETE', `/transactions/${id}`),
-
-  allocationView: (txId: number) => req<AllocationView>('GET', `/allocation/${txId}`),
-  allocate: (txId: number, allocations: unknown[]) =>
-    req<{ is_fully_allocated: boolean; unallocated: number }>('POST', `/allocation/${txId}`, {
-      allocations,
-    }),
 
   funds: () => req<FundSummary[]>('GET', '/funds'),
   createFund: (b: unknown) => req<FundSummary>('POST', '/funds', b),

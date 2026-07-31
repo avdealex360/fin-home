@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Transactions CRUD. Income transactions can be allocated afterwards."""
+"""Transactions CRUD."""
 
 from datetime import date
 date_type = date
@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Category, Transaction
 from app.serializers import transaction_dict
-from app.services.allocation import get_unallocated_for_tx
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -116,10 +115,7 @@ def create_transaction(body: TransactionBody, db: Session = Depends(get_db)):
     db.flush()
     db.commit()
     db.refresh(tx)
-    result = transaction_dict(tx)
-    if tx.type == "income":
-        result["unallocated"] = float(get_unallocated_for_tx(db, tx))
-    return result
+    return transaction_dict(tx)
 
 
 @router.patch("/{tx_id}")

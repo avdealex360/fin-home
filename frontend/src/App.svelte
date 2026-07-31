@@ -8,7 +8,6 @@
   import Toast from './lib/components/Toast.svelte'
   import BottomSheet from './lib/components/BottomSheet.svelte'
   import TxForm from './lib/components/TxForm.svelte'
-  import AllocationSheet from './lib/components/AllocationSheet.svelte'
   import Onboarding from './lib/components/Onboarding.svelte'
   import Login from './lib/components/Login.svelte'
   import Loader from './lib/components/Loader.svelte'
@@ -87,31 +86,18 @@
     return Math.max(dim - now.getDate(), 0)
   })
 
-  // Add-operation sheet state machine: closed -> form -> (income) allocate
-  let sheet = $state<'closed' | 'form' | 'allocate'>('closed')
-  let allocTxId = $state<number | null>(null)
+  let sheet = $state<'closed' | 'form'>('closed')
 
   function openAdd() {
-    allocTxId = null
     sheet = 'form'
   }
   function onSubmitted(tx: Transaction) {
     invalidate()
-    if (tx.type === 'income') {
-      allocTxId = tx.id
-      sheet = 'allocate'
-    } else {
-      sheet = 'closed'
-      showToast('Операция записана', async () => {
-        await api.deleteTransaction(tx.id)
-        invalidate()
-      })
-    }
-  }
-  function onAllocated() {
     sheet = 'closed'
-    invalidate()
-    showToast('Доход распределён')
+    showToast('Операция записана', async () => {
+      await api.deleteTransaction(tx.id)
+      invalidate()
+    })
   }
 </script>
 
@@ -163,7 +149,7 @@
       {:else if $route === 'integrations'}
         <Integrations />
       {:else}
-        <Dashboard onAllocate={(id) => { allocTxId = id; sheet = 'allocate' }} />
+        <Dashboard />
       {/if}
     </div>
   </div>
@@ -173,14 +159,6 @@
   <BottomSheet open={sheet === 'form'} title="Новая операция" onclose={() => (sheet = 'closed')}>
     {#snippet children()}
       <TxForm onsubmitted={onSubmitted} />
-    {/snippet}
-  </BottomSheet>
-
-  <BottomSheet open={sheet === 'allocate'} title="Распределение дохода" onclose={() => (sheet = 'closed')}>
-    {#snippet children()}
-      {#if allocTxId}
-        <AllocationSheet txId={allocTxId} ondone={onAllocated} />
-      {/if}
     {/snippet}
   </BottomSheet>
 

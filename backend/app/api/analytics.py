@@ -1,4 +1,4 @@
-"""Analytics bundle: plan vs fact, trends, forecasts, pair breakdown."""
+"""Analytics bundle: plan vs fact, trends, pair breakdown."""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import ym_params
 from app.db import get_db
 from app.services.analytics import AnalyticsService
-from app.services.forecast import ForecastService
 from app.services.pair_analytics import PairAnalyticsService
 from app.util import period_date_range
 
@@ -29,16 +28,6 @@ def analytics(
         "top_categories": [{"name": n, "amount": float(a)} for n, a in top],
         "monthly_trends": AnalyticsService.monthly_trends(db, 12, anchor=(year, month)),
         "cumulative_trends": AnalyticsService.cumulative_trends(db, 12, anchor=(year, month)),
-        "cash_flow": ForecastService.cash_flow_forecast(db, 3),
         "pair": PairAnalyticsService.monthly_breakdown(db, start, end),
         "split_503020": AnalyticsService.split_503020(db, start, end),
-    }
-
-
-@router.get("/category/{category_id}")
-def category_history(category_id: int, months: int = 6, db: Session = Depends(get_db)):
-    history = AnalyticsService.category_history(db, category_id, months)
-    return {
-        "history": [{"year": y, "month": m, "amount": float(a)} for y, m, a in history],
-        "average": float(AnalyticsService.category_average(db, category_id, months)),
     }

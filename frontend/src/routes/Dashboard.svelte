@@ -8,11 +8,6 @@
   import TxForm from '../lib/components/TxForm.svelte'
   import BottomSheet from '../lib/components/BottomSheet.svelte'
 
-  interface Props {
-    onAllocate: (txId: number) => void
-  }
-  let { onAllocate }: Props = $props()
-
   let summary = $state<MonthSummary | null>(null)
   let recent = $state<Transaction[]>([])
   let plan = $state<any>(null)
@@ -36,8 +31,6 @@
     plan = p
     categories = c
   }
-
-  let pendingIncome = $derived(recent.find((t) => t.type === 'income' && !t.is_fully_allocated))
 
   let pace = $derived(summary ? monthPace(summary.total_spent, plan?.expected_income || summary.income_fact) : null)
 
@@ -165,17 +158,6 @@
         </div>
       </section>
     </div>
-
-    {#if summary.unallocated > 0 && pendingIncome}
-      <button class="unalloc card" onclick={() => onAllocate(pendingIncome!.id)}>
-        <div>
-          <span class="section-label">К распределению</span>
-          <div class="num unalloc-amt">{money(summary.unallocated)} ₽</div>
-          {#if $showHelp}<div class="hint">Доход пришёл, но ещё не разложен по категориям и целям.</div>{/if}
-        </div>
-        <span class="chip blue">Распределить <i class="ti ti-arrow-right"></i></span>
-      </button>
-    {/if}
 
     <div class="cols stretch">
       <!-- 50/30/20 -->
@@ -391,13 +373,6 @@
 
   .small { font-size: var(--text-sm); }
   .tiny { font-size: var(--text-xs); }
-
-  .unalloc {
-    display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-    width: 100%; text-align: left;
-    border: 1px solid var(--blue-border); background: var(--blue-bg);
-  }
-  .unalloc-amt { font-size: var(--text-xl); }
 
   .meters { margin-top: var(--space-4); gap: var(--space-4); }
   .mname { font-size: 14px; font-weight: 500; }

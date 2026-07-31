@@ -15,24 +15,24 @@ from app.models import AppUser, Category, Debt, Setting, SinkingFund
 
 GROUP_PERCENTS = {"needs": 50, "wants": 30, "savings": 20}
 
-# (name, group, sort_order, allocation_level)  level: 1=fixed obligation, 2=variable need, 4=want
+# (name, group, sort_order)
 DEMO_CATEGORIES = [
-    ("Аренда жилья", "needs", 1, 1),
-    ("Продукты и быт", "needs", 2, 2),
-    ("Транспорт", "needs", 3, 2),
-    ("Здоровье и лекарства", "needs", 4, 2),
-    ("Питомец — плановые", "needs", 5, 2),
-    ("Питомец — ветеринар", "needs", 6, 2),
-    ("Связь и интернет", "needs", 7, 1),
-    ("Рассрочка", "needs", 8, 1),
-    ("Кредитная карта", "needs", 9, 1),
-    ("Рестораны и доставка", "wants", 10, 4),
-    ("Подписки и развлечения", "wants", 11, 4),
-    ("Одежда и уход", "wants", 12, 4),
-    ("Спорт и хобби", "wants", 13, 4),
-    ("Подарки", "wants", 14, 4),
-    ("Буфер (прочее)", "wants", 15, 4),
-    ("Пополнение вклада", "savings", 16, 4),
+    ("Аренда жилья", "needs", 1),
+    ("Продукты и быт", "needs", 2),
+    ("Транспорт", "needs", 3),
+    ("Здоровье и лекарства", "needs", 4),
+    ("Питомец — плановые", "needs", 5),
+    ("Питомец — ветеринар", "needs", 6),
+    ("Связь и интернет", "needs", 7),
+    ("Рассрочка", "needs", 8),
+    ("Кредитная карта", "needs", 9),
+    ("Рестораны и доставка", "wants", 10),
+    ("Подписки и развлечения", "wants", 11),
+    ("Одежда и уход", "wants", 12),
+    ("Спорт и хобби", "wants", 13),
+    ("Подарки", "wants", 14),
+    ("Буфер (прочее)", "wants", 15),
+    ("Пополнение вклада", "savings", 16),
 ]
 
 SAVINGS_CATEGORY_NAME = "Пополнение вклада"
@@ -81,7 +81,7 @@ def ensure_savings_category(db: Session) -> None:
     if not db.query(Category).first():
         return
     max_order = db.query(Category).count()
-    db.add(Category(name=SAVINGS_CATEGORY_NAME, group="savings", sort_order=max_order + 1, allocation_level=4))
+    db.add(Category(name=SAVINGS_CATEGORY_NAME, group="savings", sort_order=max_order + 1))
     db.commit()
 
 
@@ -143,8 +143,8 @@ def load_demo_data(db: Session) -> None:
         db.commit()
         return
 
-    for name, group, order, level in DEMO_CATEGORIES:
-        db.add(Category(name=name, group=group, sort_order=order, allocation_level=level))
+    for name, group, order in DEMO_CATEGORIES:
+        db.add(Category(name=name, group=group, sort_order=order))
     for name, group, order in DEMO_INCOME_CATEGORIES:
         db.add(Category(name=name, group=group, sort_order=order))
 

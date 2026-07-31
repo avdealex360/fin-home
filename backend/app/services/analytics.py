@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import and_, extract, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Category, Debt, DebtPayment, MonthlyPlan, Transaction
+from app.models import Category, MonthlyPlan, Transaction
 from app.seed import GROUP_PERCENTS
 from app.util import months_in_range
 
@@ -154,43 +154,6 @@ class AnalyticsService:
         return [(name, amount or Decimal("0")) for name, amount in rows]
 
     @staticmethod
-    def category_history(db: Session, category_id: int, months: int = 6) -> list[tuple[int, int, Decimal]]:
-        today = date.today()
-        y, m = today.year, today.month
-        history = []
-        for _ in range(months):
-            total = (
-                db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .filter(
-                    Transaction.type == "expense",
-                    Transaction.category_id == category_id,
-                    extract("year", Transaction.date) == y,
-                    extract("month", Transaction.date) == m,
-                )
-                .scalar()
-            ) or Decimal("0")
-            history.append((y, m, total))
-            m -= 1
-            if m == 0:
-                m = 12
-                y -= 1
-        history.reverse()
-        return history
-
-    @staticmethod
-    def debt_forecast(db: Session, debt_id: int) -> date | None:
-        debt = db.query(Debt).filter(Debt.id == debt_id).first()
-        if not debt or debt.monthly_payment <= 0 or debt.remaining <= 0:
-            return None
-        months = int((debt.remaining / debt.monthly_payment).to_integral_value()) + 1
-        today = date.today()
-        y, m = today.year, today.month + months
-        while m > 12:
-            m -= 12
-            y += 1
-        return date(y, m, 1)
-
-    @staticmethod
     def cumulative_trends(
         db: Session, months: int = 12, anchor: tuple[int, int] | None = None
     ) -> list[dict]:
@@ -212,23 +175,6 @@ class AnalyticsService:
                 }
             )
         return result
-
-    @staticmethod
-    def category_average(db: Session, category_id: int, months: int = 6) -> Decimal:
-        history = AnalyticsService.category_history(db, category_id, months)
-        if not history:
-            return Decimal("0")
-        total = sum(amount for _, _, amount in history)
-        return (total / len(history)).quantize(Decimal("0.01"))
-
-    @staticmethod
-    def debt_payments(db: Session, debt_id: int) -> list[DebtPayment]:
-        return (
-            db.query(DebtPayment)
-            .filter(DebtPayment.debt_id == debt_id)
-            .order_by(DebtPayment.date.desc())
-            .all()
-        )
 
     @staticmethod
     def split_503020(db: Session, start: date, end: date) -> dict:

@@ -202,7 +202,7 @@
 {#if error}<p class="err">{error}</p>{/if}
 
 <button class="btn btn-primary" onclick={submit} disabled={saving}>
-  {saving ? 'Сохраняю…' : existing ? 'Сохранить' : type === 'income' ? 'Добавить и распределить' : 'Записать'}
+  {saving ? 'Сохраняю…' : existing ? 'Сохранить' : 'Записать'}
 </button>
 
 <style>

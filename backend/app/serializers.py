@@ -31,7 +31,6 @@ def category_dict(c: Category) -> dict:
         "group": c.group,
         "is_hidden": c.is_hidden,
         "sort_order": c.sort_order,
-        "allocation_level": c.allocation_level,
         "icon": icon["icon"],
         "color": icon["color"],
     }
@@ -48,7 +47,6 @@ def transaction_dict(t: Transaction) -> dict:
         "user_id": t.user_id,
         "user_name": t.user.name if t.user else None,
         "comment": t.comment,
-        "is_fully_allocated": t.is_fully_allocated,
         "is_sinking_fund_spend": t.is_sinking_fund_spend,
         "fund_id": t.fund_id,
     }

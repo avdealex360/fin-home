@@ -33,7 +33,7 @@ frontend/         — Svelte 5 + Vite PWA
     lib/stores.ts  — period, hash route, toast, dataVersion(invalidate)
     lib/format.ts  — money / dates / month names
     lib/components/ — BottomSheet, Toast, MoneyInput, ProgressBar, TxForm,
-                      AllocationSheet, Chart, BottomNav, Onboarding, Login
+                      Chart, BottomNav, Onboarding, Login
     routes/        — Dashboard, Transactions (full history: multi-select/group filters,
                       period presets, day/month grouping with totals), Plan,
                       Deposit (standalone calculator, linked from More), Analytics, More, Faq
@@ -68,13 +68,12 @@ make deploy                   # git pull + rebuild (run on VPS)
 
 - **Frontend ↔ backend contract:** TS interfaces in `frontend/src/lib/api.ts` mirror `backend/app/serializers.py` and the domain dataclasses. Keep them in sync when changing either.
 - **Routing is hash-based** (`#/plan`), so the server never needs an SPA fallback — `StaticFiles(html=True)` is enough.
-- **Nothing is hardcoded/undeletable.** On first run the DB is empty; the onboarding screen offers demo data or a clean start. Allocation and the 50/30/20 split work off `Category.group` / `Debt.type`, never off category names.
+- **Nothing is hardcoded/undeletable.** On first run the DB is empty; the onboarding screen offers demo data or a clean start. The 50/30/20 split works off `Category.group` / `Debt.type`, never off category names.
 - **Optimistic-ish UI:** mutations call `invalidate()` (bumps `dataVersion`) so screens refetch; deletes show a Toast with undo.
 
 ## Data model highlights
 
-- **Category.group**: `needs` / `wants` / `savings` / `income` — drives the 50/30/20 split. `allocation_level` (1=obligations, 2=variable, 4=wants+savings; 3=funds) drives the income allocation wizard.
-- **IncomeAllocation** — links an income `Transaction` to categories/funds at a level; `Transaction.is_fully_allocated` flips when fully distributed.
+- **Category.group**: `needs` / `wants` / `savings` / `income` — drives the 50/30/20 split. Income is recorded as a plain transaction and lands on the month balance as-is (the old income-allocation wizard was removed in July 2026).
 - **SinkingFund** — envelope with optional `is_rolling` and `linked_category_id`.
 - **MonthlyPlan** (CategoryLimit, PlannedExpense, PlannedDebtPayment) / Debt / Setting as before. **Deposit** is a standalone calculator (`app/services/deposit_calc.py` + `deposit` settings keys) — no ledger, no effect on the budget; the real вклад top-up is recorded as a normal expense in a `savings`-group category.
 

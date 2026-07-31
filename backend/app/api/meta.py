@@ -12,7 +12,6 @@ from app.models import (
     AppUser,
     Category,
     CategoryLimit,
-    IncomeAllocation,
     PlannedExpense,
     Transaction,
 )
@@ -90,7 +89,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 class CategoryBody(BaseModel):
     name: str
     group: str  # needs | wants | savings | income
-    allocation_level: int | None = None
     sort_order: int | None = None
     is_hidden: bool | None = None
 
@@ -116,7 +114,6 @@ def create_category(body: CategoryBody, db: Session = Depends(get_db)):
     c = Category(
         name=body.name,
         group=body.group,
-        allocation_level=body.allocation_level,
         sort_order=body.sort_order if body.sort_order is not None else max_order + 1,
     )
     db.add(c)
@@ -132,8 +129,6 @@ def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_d
         raise HTTPException(404, "category not found")
     c.name = body.name
     c.group = body.group
-    if body.allocation_level is not None:
-        c.allocation_level = body.allocation_level
     if body.sort_order is not None:
         c.sort_order = body.sort_order
     if body.is_hidden is not None:
@@ -147,20 +142,17 @@ def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_d
 def delete_category(cat_id: int, db: Session = Depends(get_db)):
     """Hard-delete only when truly unused, otherwise hide.
 
-    A category can be referenced from several tables (transactions, income
-    allocations, plan limits, planned expenses). If any *historical* record
-    points to it we hide it to keep reports intact. Plan-only artifacts
-    (limits / planned expenses) are just configuration — we clean them up so
-    an unused category can still be removed instead of raising a FK error.
+    A category can be referenced from several tables (transactions, plan
+    limits, planned expenses). If any *historical* record points to it we
+    hide it to keep reports intact. Plan-only artifacts (limits / planned
+    expenses) are just configuration — we clean them up so an unused
+    category can still be removed instead of raising a FK error.
     """
     c = db.query(Category).filter(Category.id == cat_id).first()
     if not c:
         return {"ok": True}
 
-    has_history = (
-        db.query(Transaction.id).filter(Transaction.category_id == cat_id).first()
-        or db.query(IncomeAllocation.id).filter(IncomeAllocation.category_id == cat_id).first()
-    )
+    has_history = db.query(Transaction.id).filter(Transaction.category_id == cat_id).first()
     if has_history:
         c.is_hidden = True
         db.commit()

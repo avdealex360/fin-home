@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import (
-    allocation,
     analytics,
     auth,
     debts,
@@ -94,7 +93,6 @@ for router in (
     auth.router,
     meta.router,
     transactions.router,
-    allocation.router,
     funds.router,
     debts.router,
     plan.router,
