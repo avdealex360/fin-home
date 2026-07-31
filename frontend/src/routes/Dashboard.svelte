@@ -32,7 +32,11 @@
     categories = c
   }
 
-  let pace = $derived(summary ? monthPace(summary.total_spent, plan?.expected_income || summary.income_fact) : null)
+  let pace = $derived(
+    summary
+      ? monthPace(summary.total_spent, plan?.expected_income || summary.income_fact, $period.year, $period.month)
+      : null,
+  )
 
   // "Свободно" is the one number the whole screen is built around:
   // income that actually arrived − spent − what was moved to savings.

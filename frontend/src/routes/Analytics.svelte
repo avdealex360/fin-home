@@ -41,12 +41,15 @@
   }
 
   // ─── Pace & forecast ────────────────────────────────────────────────
+  let hasPlanLimits = $derived(Boolean(plan?.limits?.length))
   let planLimit = $derived(
-    plan?.limits?.length
+    hasPlanLimits
       ? plan.limits.reduce((s: number, l: any) => s + l.limit_amount, 0)
       : (summary?.income_fact ?? 0) * 0.8,
   )
-  let pace = $derived(summary ? monthPace(summary.total_spent, planLimit) : null)
+  let pace = $derived(
+    summary ? monthPace(summary.total_spent, planLimit, $period.year, $period.month) : null,
+  )
   let daily = $derived(pace ? dailySpend(monthTxs, pace.daysInMonth) : [])
   let cumDaily = $derived(pace ? cumulative(daily, pace.day) : [])
 
@@ -62,7 +65,8 @@
     const prev = trends.length > 1 ? trends[trends.length - 2] : null
     const pct = (now: number, before: number) => (before > 0 ? ((now - before) / before) * 100 : 0)
     const dExp = prev ? pct(summary.total_spent, prev.expense) : 0
-    const dInc = prev ? pct(summary.income_fact, prev.income) : 0
+    const net = summary.income_fact - summary.total_spent
+    const dNet = prev ? net - (prev.income - prev.expense) : 0
     return [
       {
         label: 'Расходы за месяц', value: `${money(summary.total_spent)} ₽`, color: 'var(--red)',
@@ -72,22 +76,22 @@
       },
       {
         label: 'Средний день', value: `${money(pace.perDaySoFar)} ₽`, color: 'var(--yellow)',
-        spark: expenses.map((e: number, i: number) => e / 30), delta: `прогноз ${money(pace.projected)} ₽`,
+        spark: null, delta: `прогноз ${money(pace.projected)} ₽`,
         deltaColor: 'var(--text-secondary)', note: 'к концу месяца',
         hint: 'Расходы, поделённые на прошедшие дни месяца.',
       },
       {
         label: 'Норма сбережений', value: `${summary.savings_rate.toFixed(1)}%`, color: 'var(--blue)',
-        spark: trends.map((t: any) => (t.income > 0 ? ((t.income - t.expense) / t.income) * 100 : 0)),
+        spark: trends.map((t: any) => (t.income > 0 ? (t.savings / t.income) * 100 : 0)),
         delta: `цель ${summary.savings_target_rate}%`,
         deltaColor: summary.savings_rate >= summary.savings_target_rate ? 'var(--green)' : 'var(--red)',
-        note: '', hint: 'Какую долю дохода удалось не потратить. Здоровым считается 20% и выше.',
+        note: '', hint: 'Какую долю дохода удалось отложить. Здоровым считается 20% и выше.',
       },
       {
         label: 'Чистый поток', value: `${money(summary.income_fact - summary.total_spent)} ₽`, color: 'var(--green)',
         spark: trends.map((t: any) => t.income - t.expense),
-        delta: `${dInc >= 0 ? '+' : '−'}${Math.abs(dInc).toFixed(1)}%`,
-        deltaColor: dInc >= 0 ? 'var(--green)' : 'var(--red)', note: 'доход к прошлому месяцу',
+        delta: `${dNet >= 0 ? '+' : '−'}${money(Math.abs(dNet))} ₽`,
+        deltaColor: dNet >= 0 ? 'var(--green)' : 'var(--red)', note: 'к прошлому месяцу',
         hint: 'Доход минус расход — именно это остаётся в семье за месяц.',
       },
     ]
@@ -95,9 +99,15 @@
 
   // ─── Structure ──────────────────────────────────────────────────────
   let topCats = $derived(data?.top_categories ?? [])
-  let totalSpent = $derived(topCats.reduce((s: number, t: any) => s + t.amount, 0))
+  // Real spend of the whole period — the backend sums it server-side, so the
+  // donut centre and shares are honest even beyond the top-5 categories.
+  let totalSpent = $derived(data?.expense_total ?? 0)
   let segments = $derived(
-    topCats.map((t: any, i: number) => ({ label: t.name, value: t.amount, color: PALETTE[i % PALETTE.length] })),
+    topCats.map((t: any, i: number) => ({
+      label: t.name,
+      value: t.amount,
+      color: t.name === 'Прочее' ? '#5b6478' : PALETTE[i % PALETTE.length],
+    })),
   )
 
   // Months in which each category had a charge → recurring vs variable.
@@ -153,7 +163,7 @@
           <div class="k">{s.label}</div>
           <div class="tile-main">
             <div class="num v" style="color: {s.color}">{s.value}</div>
-            <Sparkline values={s.spark} color={s.color} />
+            {#if s.spark}<Sparkline values={s.spark} color={s.color} />{/if}
           </div>
           <div class="tile-delta">
             <span style="color: {s.deltaColor}">{s.delta}</span>
@@ -182,6 +192,7 @@
         </section>
       {/if}
 
+      {#if periodType === 'month'}
       <section class="card col">
         <h2 class="card-title">Прогноз до конца месяца</h2>
         {#if $showHelp}
@@ -211,7 +222,13 @@
             Идёте в рамках плана. Запас — <span class="num">{money(planLimit - pace.projected)} ₽</span>.
           </div>
         {/if}
+        {#if !hasPlanLimits}
+          <p class="dim tiny" style="margin: 8px 0 0">
+            Лимиты в Плане не заданы — ориентиром служит 80% дохода месяца.
+          </p>
+        {/if}
       </section>
+      {/if}
     </div>
 
     <div class="cols stretch">
@@ -236,6 +253,7 @@
       </section>
 
       <section class="col stack">
+        {#if periodType === 'month'}
         <div class="card">
           <h2 class="card-title">Обязательное и необязательное</h2>
           {#if $showHelp}
@@ -260,6 +278,8 @@
           </div>
         </div>
 
+        {/if}
+
         {#if data.pair?.users?.length > 1}
           <div class="card">
             <h2 class="card-title">Кто сколько тратит</h2>
@@ -281,6 +301,7 @@
       </section>
     </div>
 
+    {#if periodType === 'month'}
     <div class="cols stretch">
       <section class="card col">
         <h2 class="card-title">Траты по дням</h2>
@@ -317,11 +338,14 @@
         {/if}
       </section>
     </div>
+    {/if}
 
     <section class="card">
       <div class="row">
         <h2 class="card-title">План против факта</h2>
-        <span class="dim small">{monthName($period.month)} {$period.year}</span>
+        <span class="dim small">
+          {periodType === 'month' ? `${monthName($period.month)} ${$period.year}` : `${PERIOD_LABELS[periodType]} · ${$period.year}`}
+        </span>
       </div>
       {#if $showHelp}
         <p class="explain">Полоса вправо от центра — потратили больше плана, влево — меньше.</p>

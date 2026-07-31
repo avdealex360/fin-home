@@ -124,17 +124,6 @@ def test_savings_category_limit_shows_up_in_group_limit(db):
     assert meter["savings"]["allocated"] == 20000.0
 
 
-def test_analytics_has_503020_split(db):
-    ensure_workspace_settings(db, WS); load_demo_data(db, WS)
-    from app.services.analytics import AnalyticsService
-    from app.util import period_date_range
-    y, mth = date.today().year, date.today().month
-    start, end = period_date_range(y, mth, "month")
-    data = AnalyticsService.split_503020(db, WS, start, end)
-    assert set(data.keys()) == {"needs", "wants", "savings"}
-    assert set(data["needs"].keys()) == {"fact", "ideal", "percent"}
-
-
 def test_plan_meter_needs_target(db):
     ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.plan import PlanService
@@ -259,6 +248,40 @@ def test_transactions_list_pagination_filter_sort(api):
     other_cat = client.get("/api/categories").json()[1]["id"]
     by_other_category = client.get(f"/api/transactions?category_id={other_cat}").json()
     assert by_other_category["total"] == 0
+
+
+def test_analytics_payload_shape(api):
+    """plan_vs_fact carries trailing-3-months context; the donut payload has an
+    honest total plus a "Прочее" slice; dead payloads are gone."""
+    client = api.client
+    _demo(api)
+
+    cats = client.get("/api/categories").json()
+    expense_cats = [c for c in cats if c["group"] != "income"][:7]
+    # Spend in 6 categories this month -> a "Прочее" slice beyond the top 5.
+    for i, c in enumerate(expense_cats[:6]):
+        client.post("/api/transactions", json={
+            "type": "expense", "amount": 1000 * (i + 1), "category_id": c["id"], "date": "2026-07-10",
+        })
+    # History for months_active/avg3: one category spent in each of 3 prior months.
+    for m in (4, 5, 6):
+        client.post("/api/transactions", json={
+            "type": "expense", "amount": 3000, "category_id": expense_cats[0]["id"], "date": f"2026-{m:02d}-05",
+        })
+
+    a = client.get("/api/analytics?year=2026&month=7&period=month").json()
+    assert "cumulative_trends" not in a and "cash_flow" not in a and "split_503020" not in a
+
+    assert a["expense_total"] == 21000.0  # 1..6k this month
+    top = a["top_categories"]
+    assert top[-1]["name"] == "Прочее"
+    assert sum(t["amount"] for t in top) == a["expense_total"]
+
+    row = next(c for c in a["plan_vs_fact"] if c["category_id"] == expense_cats[0]["id"])
+    assert row["months_active"] == 3
+    assert row["avg3"] == 3000.0
+    # No plan configured -> no synthesized plan noise.
+    assert all(c["plan"] == 0 for c in a["plan_vs_fact"])
 
 
 def test_analytics_period_switch_aggregates_quarter_and_year(api):

@@ -19,9 +19,17 @@ export interface MonthPace {
   overBy: number
 }
 
-export function monthPace(spent: number, planLimit: number, ref = new Date()): MonthPace {
-  const daysInMonth = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate()
-  const day = Math.min(ref.getDate(), daysInMonth)
+/** Pace for the VIEWED month, not the calendar month: a past month is fully
+ *  elapsed (day = last day), the current month uses today, a future month has
+ *  zero elapsed days — so browsing history never shows a bogus projection. */
+export function monthPace(spent: number, planLimit: number, year?: number, month?: number): MonthPace {
+  const now = new Date()
+  const y = year ?? now.getFullYear()
+  const m = month ?? now.getMonth() + 1
+  const daysInMonth = new Date(y, m, 0).getDate()
+  const isCurrent = y === now.getFullYear() && m === now.getMonth() + 1
+  const isPast = y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth() + 1)
+  const day = isCurrent ? Math.min(now.getDate(), daysInMonth) : isPast ? daysInMonth : 0
   const daysLeft = Math.max(daysInMonth - day, 0)
   const perDaySoFar = day > 0 ? spent / day : 0
   const projected = perDaySoFar * daysInMonth

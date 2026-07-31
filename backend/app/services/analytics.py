@@ -1,13 +1,12 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, extract, func, or_
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, MonthlyPlan, Transaction
-from app.seed import GROUP_PERCENTS
-from app.util import months_in_range
+from app.util import months_in_range, shift_month
 
 
 @dataclass
@@ -19,6 +18,9 @@ class CategoryComparison:
     fact: Decimal
     diff: Decimal
     diff_percent: float
+    # Trailing-3-months context (window right before the period start):
+    months_active: int  # in how many of those months the category had spend
+    avg3: Decimal  # average monthly spend over that window
 
 
 @dataclass
@@ -36,41 +38,68 @@ class AnalyticsService:
         month_pairs = months_in_range(start, end)
         plans = (
             db.query(MonthlyPlan)
-            .filter(MonthlyPlan.workspace_id == ws_id)
+            .filter(
+                MonthlyPlan.workspace_id == ws_id,
+                MonthlyPlan.year.in_({y for y, _ in month_pairs}),
+            )
             .options(joinedload(MonthlyPlan.limits))
-            .filter(or_(*(and_(MonthlyPlan.year == y, MonthlyPlan.month == m) for y, m in month_pairs)))
             .all()
         )
+        plans = [p for p in plans if (p.year, p.month) in set(month_pairs)]
         categories = (
             db.query(Category)
             .filter(Category.workspace_id == ws_id, Category.is_hidden.is_(False))
             .order_by(Category.sort_order)
             .all()
         )
+
+        # One grouped query for the facts of the whole period.
+        facts = dict(
+            db.query(Transaction.category_id, func.coalesce(func.sum(Transaction.amount), 0))
+            .filter(
+                Transaction.workspace_id == ws_id,
+                Transaction.type == "expense",
+                Transaction.category_id.isnot(None),
+                Transaction.date.between(start, end),
+            )
+            .group_by(Transaction.category_id)
+            .all()
+        )
+
+        # Trailing 3 months before the period: months with spend + average.
+        hist_start_y, hist_start_m = shift_month(start.year, start.month, -3)
+        hist_start = date(hist_start_y, hist_start_m, 1)
+        hist_end = start - timedelta(days=1)
+        history = (
+            db.query(
+                Transaction.category_id,
+                func.count(func.distinct(
+                    extract("year", Transaction.date) * 12 + extract("month", Transaction.date)
+                )),
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .filter(
+                Transaction.workspace_id == ws_id,
+                Transaction.type == "expense",
+                Transaction.category_id.isnot(None),
+                Transaction.date.between(hist_start, hist_end),
+            )
+            .group_by(Transaction.category_id)
+            .all()
+        )
+        hist_by_cat = {cat_id: (int(months), Decimal(total)) for cat_id, months, total in history}
+
         results = []
         for cat in categories:
-            plan_amount = Decimal("0")
-            for plan in plans:
-                lim = next((l for l in plan.limits if l.category_id == cat.id), None)
-                if lim:
-                    plan_amount += lim.limit_amount
-                elif plan.expected_income > 0:
-                    pct = GROUP_PERCENTS.get(cat.group, 0)
-                    group_cats = [c for c in categories if c.group == cat.group]
-                    if group_cats:
-                        plan_amount += plan.expected_income * Decimal(pct) / Decimal("100") / len(group_cats)
-
-            fact = (
-                db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .filter(
-                    Transaction.workspace_id == ws_id,
-                    Transaction.type == "expense",
-                    Transaction.category_id == cat.id,
-                    Transaction.date.between(start, end),
-                )
-                .scalar()
-            ) or Decimal("0")
-
+            # Plan is the explicitly configured limits only. Synthesizing a
+            # "plan" by evenly splitting expected income across a group read
+            # as noise next to real limits — an unplanned category is plan 0.
+            plan_amount = sum(
+                (lim.limit_amount for plan in plans for lim in plan.limits if lim.category_id == cat.id),
+                Decimal("0"),
+            )
+            fact = Decimal(facts.get(cat.id, 0))
+            months_active, hist_total = hist_by_cat.get(cat.id, (0, Decimal("0")))
             diff = fact - plan_amount
             diff_pct = float(diff / plan_amount * 100) if plan_amount > 0 else 0.0
             results.append(
@@ -82,6 +111,8 @@ class AnalyticsService:
                     fact=fact,
                     diff=diff,
                     diff_percent=diff_pct,
+                    months_active=months_active,
+                    avg3=(hist_total / 3).quantize(Decimal("0.01")),
                 )
             )
         return results
@@ -96,50 +127,60 @@ class AnalyticsService:
         months actually moves the trend window, so the chart reflects the view.
         """
         if anchor:
-            y, m = anchor
+            end_y, end_m = anchor
         else:
             today = date.today()
-            y, m = today.year, today.month
+            end_y, end_m = today.year, today.month
+        start_y, start_m = shift_month(end_y, end_m, -(months - 1))
+        start = date(start_y, start_m, 1)
+        from calendar import monthrange
+
+        end = date(end_y, end_m, monthrange(end_y, end_m)[1])
+
+        ym = (extract("year", Transaction.date), extract("month", Transaction.date))
+
+        def grouped(query_filter) -> dict[tuple[int, int], Decimal]:
+            rows = (
+                db.query(*ym, func.coalesce(func.sum(Transaction.amount), 0))
+                .filter(
+                    Transaction.workspace_id == ws_id,
+                    Transaction.date.between(start, end),
+                    *query_filter,
+                )
+                .group_by(*ym)
+                .all()
+            )
+            return {(int(y), int(m)): Decimal(s) for y, m, s in rows}
+
+        incomes = grouped([Transaction.type == "income"])
+        expenses = grouped([Transaction.type == "expense"])
+        savings_rows = (
+            db.query(*ym, func.coalesce(func.sum(Transaction.amount), 0))
+            .join(Category, Category.id == Transaction.category_id)
+            .filter(
+                Transaction.workspace_id == ws_id,
+                Transaction.type.in_(["expense", "transfer"]),
+                Category.group == "savings",
+                Transaction.date.between(start, end),
+            )
+            .group_by(*ym)
+            .all()
+        )
+        savings = {(int(y), int(m)): Decimal(s) for y, m, s in savings_rows}
+
         trends = []
+        y, m = start_y, start_m
         for _ in range(months):
-            income = (
-                db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .filter(
-                    Transaction.workspace_id == ws_id,
-                    Transaction.type == "income",
-                    extract("year", Transaction.date) == y,
-                    extract("month", Transaction.date) == m,
+            trends.append(
+                MonthlyTrend(
+                    year=y,
+                    month=m,
+                    income=incomes.get((y, m), Decimal("0")),
+                    expense=expenses.get((y, m), Decimal("0")),
+                    savings=savings.get((y, m), Decimal("0")),
                 )
-                .scalar()
-            ) or Decimal("0")
-            expense = (
-                db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .filter(
-                    Transaction.workspace_id == ws_id,
-                    Transaction.type == "expense",
-                    extract("year", Transaction.date) == y,
-                    extract("month", Transaction.date) == m,
-                )
-                .scalar()
-            ) or Decimal("0")
-            savings = (
-                db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .join(Category)
-                .filter(
-                    Transaction.workspace_id == ws_id,
-                    Transaction.type.in_(["expense", "transfer"]),
-                    Category.group == "savings",
-                    extract("year", Transaction.date) == y,
-                    extract("month", Transaction.date) == m,
-                )
-                .scalar()
-            ) or Decimal("0")
-            trends.append(MonthlyTrend(year=y, month=m, income=income, expense=expense, savings=savings))
-            m -= 1
-            if m == 0:
-                m = 12
-                y -= 1
-        trends.reverse()
+            )
+            y, m = shift_month(y, m, 1)
         return trends
 
     @staticmethod
@@ -160,63 +201,16 @@ class AnalyticsService:
         return [(name, amount or Decimal("0")) for name, amount in rows]
 
     @staticmethod
-    def cumulative_trends(
-        db: Session, ws_id: int, months: int = 12, anchor: tuple[int, int] | None = None
-    ) -> list[dict]:
-        trends = AnalyticsService.monthly_trends(db, ws_id, months, anchor=anchor)
-        cum_income = Decimal("0")
-        cum_expense = Decimal("0")
-        cum_savings = Decimal("0")
-        result = []
-        for t in trends:
-            cum_income += t.income
-            cum_expense += t.expense
-            cum_savings += t.savings
-            result.append(
-                {
-                    "label": f"{t.year}-{t.month:02d}",
-                    "income": float(cum_income),
-                    "expense": float(cum_expense),
-                    "savings": float(cum_savings),
-                }
-            )
-        return result
-
-    @staticmethod
-    def split_503020(db: Session, ws_id: int, start: date, end: date) -> dict:
-        from decimal import Decimal
-        from app.models import Category, Transaction
-        from app.services.dashboard import _savings_fund_contributions
-
-        def expense_for(group: str) -> Decimal:
-            return Decimal(str((
+    def expense_total(db: Session, ws_id: int, start: date, end: date) -> Decimal:
+        return Decimal(
+            (
                 db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .join(Category, Category.id == Transaction.category_id)
-                .filter(Transaction.workspace_id == ws_id,
-                        Transaction.type == "expense", Category.group == group,
-                        Transaction.date.between(start, end))
+                .filter(
+                    Transaction.workspace_id == ws_id,
+                    Transaction.type == "expense",
+                    Transaction.date.between(start, end),
+                )
                 .scalar()
-            ) or "0"))
-
-        income = Decimal(str((
-            db.query(func.coalesce(func.sum(Transaction.amount), 0))
-            .filter(Transaction.workspace_id == ws_id,
-                    Transaction.type == "income", Transaction.date.between(start, end))
-            .scalar()
-        ) or "0"))
-
-        needs, wants = expense_for("needs"), expense_for("wants")
-        fund_contrib = sum(
-            (_savings_fund_contributions(db, ws_id, y, m) for y, m in months_in_range(start, end)),
-            Decimal("0"),
+            )
+            or 0
         )
-        savings = expense_for("savings") + fund_contrib
-        total = (needs + wants + savings) or Decimal("1")
-        out = {}
-        for name, fact, pct in (("needs", needs, 50), ("wants", wants, 30), ("savings", savings, 20)):
-            out[name] = {
-                "fact": float(fact),
-                "ideal": float(income * Decimal(pct) / Decimal("100")),
-                "percent": float(fact / total * 100),
-            }
-        return out
