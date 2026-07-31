@@ -3,7 +3,6 @@
   import { period, dataVersion, invalidate, showToast, showHelp } from '../lib/stores'
   import { money } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
-  import Loader from '../lib/components/Loader.svelte'
 
   let plan = $state<any>(null)
   let categories = $state<Category[]>([])
@@ -17,6 +16,9 @@
 
   let newExp = $state({ description: '', amount: 0 })
   let newDebt = $state({ debt_id: 0, amount: 0 })
+  // True while the viewed month is being (re)fetched — the screen shows
+  // skeleton tiles instead of the previous month's numbers.
+  let loading = $state(true)
 
   $effect(() => {
     const { year, month } = $period
@@ -25,6 +27,7 @@
   })
 
   async function load(year: number, month: number) {
+    loading = true
     const [p, cats, ds, m] = await Promise.all([
       api.plan(year, month), api.categories(), api.debts(), api.planMeter(year, month),
     ])
@@ -43,6 +46,7 @@
     limits = lm
     spent = sp
     dirty = false
+    loading = false
   }
 
   async function loadMeter() { meter = await api.planMeter($period.year, $period.month) }
@@ -110,8 +114,39 @@
   )
 </script>
 
-{#if !plan}
-  <Loader />
+{#if loading || !plan}
+  <!-- Skeleton: the month is being fetched — show placeholder tiles so slow
+       connections don't display the previous month's numbers as if current. -->
+  <div class="page" aria-busy="true">
+    <div class="cols">
+      <section class="col-wide stack">
+        <div class="card">
+          <div class="skel skel-title"></div>
+          {#each Array(6) as _}
+            <div class="skel-row">
+              <div class="skel" style="width: 40%"></div>
+              <div class="skel" style="width: 90px"></div>
+            </div>
+          {/each}
+        </div>
+      </section>
+      <aside class="col stack">
+        <div class="card">
+          <div class="skel skel-title"></div>
+          <div class="skel" style="width: 100%; height: 38px"></div>
+        </div>
+        <div class="card">
+          <div class="skel skel-title"></div>
+          {#each Array(3) as _}
+            <div class="skel-row">
+              <div class="skel" style="width: 30%"></div>
+              <div class="skel" style="width: 55%"></div>
+            </div>
+          {/each}
+        </div>
+      </aside>
+    </div>
+  </div>
 {:else}
   <div class="page">
     <div class="cols">
@@ -295,6 +330,23 @@
     font-size: var(--text-sm); font-weight: 600; color: var(--blue);
   }
   .grp .num { font-size: 11.5px; font-weight: 400; }
+
+  /* Loading skeleton */
+  .skel {
+    height: 14px; border-radius: 6px;
+    background: linear-gradient(90deg, var(--bg-elevated) 25%, rgba(255, 255, 255, 0.09) 50%, var(--bg-elevated) 75%);
+    background-size: 200% 100%;
+    animation: skel-shimmer 1.2s ease-in-out infinite;
+  }
+  .skel-title { width: 45%; height: 18px; margin-bottom: var(--space-4); }
+  .skel-row {
+    display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);
+    padding: 12px 0; border-top: 1px solid var(--line);
+  }
+  @keyframes skel-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 
   .save-bar {
     position: sticky; bottom: 0;
