@@ -287,8 +287,13 @@
               {#each data.pair.users as u, i}
                 <div>
                   <div class="row">
-                    <span class="small">{u.user_name}{#if u.top_category}<span class="dim tiny"> · чаще всего {u.top_category}</span>{/if}</span>
-                    <span class="num small">{money(u.total)} ₽</span>
+                    <span class="small">
+                      {u.user_name}
+                      {#if u.top_category}
+                        <span class="dim tiny"> · больше всего на «{u.top_category}» — {money(u.top_amount)} ₽</span>
+                      {/if}
+                    </span>
+                    <span class="num small">всего {money(u.total)} ₽</span>
                   </div>
                   <div class="pbar" style="margin-top: 7px">
                     <div class="pbar-fill" style="width: {(u.total / Math.max(1, ...data.pair.users.map((x: any) => x.total))) * 100}%; background: {PALETTE[i % PALETTE.length]}"></div>
