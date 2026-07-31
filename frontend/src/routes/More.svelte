@@ -333,9 +333,14 @@
       </div>
 
       <div class="card stack">
-        <h2 class="card-title">Данные</h2>
-        <a class="btn btn-secondary" href="/api/settings/export/csv">Экспорт CSV</a>
-        <a class="btn btn-ghost" href="/api/settings/export/json">Экспорт JSON</a>
+        <h2 class="card-title">Экспорт данных</h2>
+        <p class="explain">
+          Выгружаются данные только вашего пространства{$me?.workspace ? ` («${$me.workspace.name}»)` : ''}.
+          CSV — все операции (дата, тип, сумма, категория, участник, комментарий), удобно для Excel.
+          JSON — полная резервная копия: операции, категории, копилки, долги, участники и настройки, без секретов.
+        </p>
+        <a class="btn btn-secondary" href="/api/settings/export/csv">Экспорт CSV — операции</a>
+        <a class="btn btn-ghost" href="/api/settings/export/json">Экспорт JSON — всё пространство</a>
         <button class="btn btn-ghost danger" onclick={logout}>Выйти</button>
       </div>
     </aside>

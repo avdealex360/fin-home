@@ -216,7 +216,11 @@
             {#if plannedTotal > 0}<span class="num tiny dim">всего {money(plannedTotal)} ₽</span>{/if}
           </div>
           {#if $showHelp}
-            <p class="explain">Разовые траты, которые уже известны. Учитывайте их до того, как распределите доход.</p>
+            <p class="explain">
+              Просто заметки-напоминалки на месяц: известные разовые траты, чтобы держать их
+              в голове при планировании. Ни на лимиты, ни на операции, ни на аналитику не влияют —
+              сама трата записывается обычной операцией, когда случится.
+            </p>
           {/if}
           <div class="stack" style="margin-top: 12px; gap: 10px">
             {#each plan.planned_expenses as e}
@@ -239,6 +243,13 @@
         {#if debts.length}
           <div class="card">
             <h2 class="card-title">Взносы по долгам</h2>
+            {#if $showHelp}
+              <p class="explain">
+                Тоже заметки: сколько планируете внести по каждому долгу в этом месяце.
+                На остатки долгов и на бюджет не влияют — платёж отмечается в «Ещё» → Долги,
+                а расход записывается обычной операцией.
+              </p>
+            {/if}
             <div class="stack" style="margin-top: 12px; gap: 10px">
               {#each plan.planned_debt_payments as p}
                 <div class="row">

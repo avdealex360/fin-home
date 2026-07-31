@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -48,7 +49,10 @@ def _set_session(response: Response, request: Request, account_id: int) -> None:
 def login(body: LoginBody, request: Request, response: Response, db: Session = Depends(get_db)):
     account = (
         db.query(Account)
-        .filter(Account.username == body.username.strip(), Account.is_active.is_(True))
+        .filter(
+            func.lower(Account.username) == body.username.strip().lower(),
+            Account.is_active.is_(True),
+        )
         .first()
     )
     if not account or not verify_password(body.password, account.password_hash):
@@ -111,7 +115,8 @@ def register(body: RegisterBody, request: Request, response: Response, db: Sessi
         raise HTTPException(400, "Логин должен быть не короче 3 символов")
     if len(body.password) < 8:
         raise HTTPException(400, "Пароль должен быть не короче 8 символов")
-    if db.query(Account).filter(Account.username == username).first():
+    # Case-insensitive: «Vasya» and «vasya» are the same login.
+    if db.query(Account).filter(func.lower(Account.username) == username.lower()).first():
         raise HTTPException(400, "Такой логин уже занят")
 
     if invite.workspace_id:

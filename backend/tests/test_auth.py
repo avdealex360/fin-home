@@ -133,6 +133,29 @@ def test_invite_registration_creates_workspace(api):
     assert resp.status_code == 400
 
 
+def test_register_rejects_duplicate_username_case_insensitive(api):
+    client = api.client
+    inv1 = client.post("/api/admin/invites", json={}).json()
+    inv2 = client.post("/api/admin/invites", json={}).json()
+
+    client.cookies.clear()
+    assert client.post("/api/auth/register", json={
+        "token": inv1["token"], "username": "Vasya", "password": "password123",
+    }).status_code == 200
+
+    client.cookies.clear()
+    resp = client.post("/api/auth/register", json={
+        "token": inv2["token"], "username": "vasya", "password": "password456",
+    })
+    assert resp.status_code == 400
+    assert "занят" in resp.json()["detail"]
+
+    # Login is case-insensitive too.
+    assert client.post("/api/auth/login", json={
+        "username": "VASYA", "password": "password123",
+    }).status_code == 200
+
+
 def test_invite_join_existing_workspace(api):
     client = api.client
     invite = client.post(
