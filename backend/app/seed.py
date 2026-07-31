@@ -43,12 +43,13 @@ DEMO_INCOME_CATEGORIES = [
     ("Прочие поступления", "income", 103),
 ]
 
-# Per-workspace config, created for every new workspace.
+# Per-workspace config, created for every new workspace. Deposit values are
+# neutral placeholders — the user sets their own in the calculator.
 DEFAULT_WORKSPACE_SETTINGS = {
     "currency": "RUB",
-    "deposit_rate": "17.5",
-    "deposit_cap_day": "18",
-    "deposit_start_date": "2025-03-18",
+    "deposit_rate": "16",
+    "deposit_cap_day": "1",
+    "deposit_start_date": "",
     "deposit_term_months": "12",
     "deposit_initial_lump": "0",
     "deposit_rate_schedule": "[]",
