@@ -99,15 +99,18 @@
         <div class="num hero-amount">{money(summary.remaining)} ₽</div>
         {#if $showHelp}
           <p class="explain">
-            Это доход, который уже пришёл, минус все траты и минус то, что вы отложили.
-            Обязательные платежи месяца уже учтены — эти деньги можно тратить спокойно.
+            Доход этого месяца минус траты и минус отложенное в сбережения.
+            Считается только текущий месяц — остаток прошлых месяцев не переносится.
           </p>
         {/if}
 
+        <!-- «Траты» здесь без сбережений: отложенное вынесено отдельным слагаемым,
+             иначе оно визуально вычиталось бы дважды и формула не сходилась бы
+             с числом сверху. -->
         <div class="formula num">
           <span class="f green">Доход {money(summary.income_fact)}</span>
           <span class="op">−</span>
-          <span class="f red">Траты {money(summary.total_spent)}</span>
+          <span class="f red">Траты {money(summary.total_spent - saved)}</span>
           <span class="op">−</span>
           <span class="f gold">Отложено {money(saved)}</span>
         </div>
