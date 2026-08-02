@@ -123,6 +123,30 @@ def test_savings_category_limit_shows_up_in_group_limit(db):
     assert meter["savings"]["allocated"] == 20000.0
 
 
+def test_dashboard_rolling_balance_carries_over_months(db):
+    """The hero balance is cumulative: previous months' net (plus the
+    start_balance setting) carries into the viewed month."""
+    ensure_workspace_settings(db, WS); load_demo_data(db, WS)
+    from app.services.dashboard import DashboardService
+    from app.services.settings_store import set_setting
+
+    set_setting(db, WS, "start_balance", "10000")
+    db.add(Transaction(workspace_id=WS, type="income", amount=Decimal("100000"), date=date(2026, 6, 5)))
+    db.add(Transaction(workspace_id=WS, type="expense", amount=Decimal("40000"), date=date(2026, 6, 10)))
+    db.add(Transaction(workspace_id=WS, type="income", amount=Decimal("50000"), date=date(2026, 7, 5)))
+    db.add(Transaction(workspace_id=WS, type="expense", amount=Decimal("20000"), date=date(2026, 7, 10)))
+    db.commit()
+
+    s = DashboardService.get_month_summary(db, WS, 2026, 7)
+    assert s.carryover == Decimal("70000")  # 10k start + 60k June net
+    assert s.remaining == Decimal("30000")  # July only
+    assert s.balance == Decimal("100000")
+
+    june = DashboardService.get_month_summary(db, WS, 2026, 6)
+    assert june.carryover == Decimal("10000")
+    assert june.balance == Decimal("70000")
+
+
 def test_plan_meter_needs_target(db):
     ensure_workspace_settings(db, WS); load_demo_data(db, WS)
     from app.services.plan import PlanService

@@ -139,6 +139,8 @@ export interface MonthSummary {
   income_plan: number
   total_spent: number
   remaining: number
+  carryover: number
+  balance: number
   savings_rate: number
   savings_target_rate: number
   salary_last_month: number | null

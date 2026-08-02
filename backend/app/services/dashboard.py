@@ -50,6 +50,10 @@ class MonthSummary:
     income_plan: Decimal
     total_spent: Decimal
     remaining: Decimal
+    # Rolling balance: start_balance + all history before this month (carryover),
+    # and carryover + this month's net (balance) — so a new month doesn't start at 0.
+    carryover: Decimal
+    balance: Decimal
     savings_rate: float
     savings_target_rate: float = 20.0
     salary_last_month: Decimal | None = None
@@ -109,6 +113,8 @@ class DashboardService:
         ) or Decimal("0")
 
         remaining = income_fact - total_spent
+        carryover = DashboardService._carryover(db, ws_id, year, month)
+        balance = carryover + remaining
 
         last_salary, salary_diff = salary_comparison(db, ws_id, year, month, income_fact)
 
@@ -178,6 +184,8 @@ class DashboardService:
             income_plan=income_plan,
             total_spent=total_spent,
             remaining=remaining,
+            carryover=carryover,
+            balance=balance,
             savings_rate=savings_rate,
             salary_last_month=last_salary,
             salary_diff=salary_diff,
@@ -186,6 +194,29 @@ class DashboardService:
             funds=funds,
             has_plan=plan is not None and income_plan > 0,
         )
+
+    @staticmethod
+    def _carryover(db: Session, ws_id: int, year: int, month: int) -> Decimal:
+        """Net of the whole history before the viewed month, plus the
+        workspace's start_balance setting (money on hand when tracking began)."""
+        from app.services.settings_store import get_setting
+
+        month_start = date(year, month, 1)
+        rows = dict(
+            db.query(Transaction.type, func.coalesce(func.sum(Transaction.amount), 0))
+            .filter(
+                Transaction.workspace_id == ws_id,
+                Transaction.date < month_start,
+                Transaction.type.in_(["income", "expense"]),
+            )
+            .group_by(Transaction.type)
+            .all()
+        )
+        try:
+            start = Decimal(get_setting(db, ws_id, "start_balance", "0") or "0")
+        except ArithmeticError:
+            start = Decimal("0")
+        return start + Decimal(rows.get("income", 0)) - Decimal(rows.get("expense", 0))
 
     @staticmethod
     def _group_limit(

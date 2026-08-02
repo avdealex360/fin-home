@@ -47,6 +47,7 @@ DEMO_INCOME_CATEGORIES = [
 # neutral placeholders — the user sets their own in the calculator.
 DEFAULT_WORKSPACE_SETTINGS = {
     "currency": "RUB",
+    "start_balance": "0",  # money on hand when the workspace started tracking
     "deposit_rate": "16",
     "deposit_cap_day": "1",
     "deposit_start_date": "",

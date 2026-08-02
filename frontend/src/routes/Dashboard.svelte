@@ -41,7 +41,7 @@
   // "Свободно" is the one number the whole screen is built around:
   // income that actually arrived − spent − what was moved to savings.
   let saved = $derived(summary?.groups.find((g) => g.name === 'savings')?.spent ?? 0)
-  let perDay = $derived(pace && pace.daysLeft > 0 ? (summary?.remaining ?? 0) / pace.daysLeft : 0)
+  let perDay = $derived(pace && pace.daysLeft > 0 ? (summary?.balance ?? 0) / pace.daysLeft : 0)
   let paceDelta = $derived(
     pace && perDay > 0 ? Math.round(((pace.perDaySoFar - perDay) / perDay) * 100) : 0,
   )
@@ -96,11 +96,11 @@
           <span class="section-label">Свободно до конца месяца</span>
           <span class="chip blue">осталось {pace.daysLeft} дн.</span>
         </div>
-        <div class="num hero-amount">{money(summary.remaining)} ₽</div>
+        <div class="num hero-amount">{money(summary.balance)} ₽</div>
         {#if $showHelp}
           <p class="explain">
-            Доход этого месяца минус траты и минус отложенное в сбережения.
-            Считается только текущий месяц — остаток прошлых месяцев не переносится.
+            Сквозной баланс: остаток прошлых месяцев плюс доход этого месяца, минус траты
+            и отложенное. Начальный остаток задаётся в «Ещё» → «Начальный остаток».
           </p>
         {/if}
 
@@ -108,6 +108,8 @@
              иначе оно визуально вычиталось бы дважды и формула не сходилась бы
              с числом сверху. -->
         <div class="formula num">
+          <span class="f blue">Остаток {money(summary.carryover)}</span>
+          <span class="op">+</span>
           <span class="f green">Доход {money(summary.income_fact)}</span>
           <span class="op">−</span>
           <span class="f red">Траты {money(summary.total_spent - saved)}</span>

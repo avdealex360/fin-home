@@ -97,6 +97,19 @@
 
   async function logout() { await api.logout(); authenticated.set(false) }
 
+  // Start balance (money on hand when tracking began) — feeds the rolling balance.
+  let startBalance = $state('')
+  api.settings().then((st: any) => (startBalance = String(st.start_balance ?? '0')))
+  async function saveStartBalance() {
+    try {
+      await api.saveSettings({ start_balance: startBalance || '0' })
+      invalidate()
+      showToast('Начальный остаток сохранён')
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
   const groupLabel = (g: 'wants' | 'savings') => (g === 'wants' ? 'Желания' : 'Сбережения')
 
   let LINKS = $derived([
@@ -113,7 +126,7 @@
   ])
 
   const GLOSSARY = [
-    { term: 'Свободно до конца месяца', def: 'Сколько ещё можно потратить, не залезая в накопления.', formula: 'доход − расходы − отложено' },
+    { term: 'Свободно до конца месяца', def: 'Сквозной баланс: остаток прошлых месяцев переносится, новый месяц не начинается с нуля.', formula: 'начальный остаток + все доходы − все расходы' },
     { term: 'Можно тратить в день', def: 'Ровный дневной бюджет на остаток месяца.', formula: 'свободно ÷ дней до конца месяца' },
     { term: 'Норма сбережений', def: 'Главный показатель здоровья бюджета. Здоровым считается 20% и выше.', formula: '(доход − расходы) ÷ доход × 100%' },
     { term: 'Темп месяца', def: 'Светлая риска на шкалах: где вы должны быть по календарю. Заливка правее риски — тратите быстрее плана.', formula: 'прошло дней ÷ дней в месяце' },
@@ -333,6 +346,19 @@
       </div>
 
       <div class="card stack">
+        <h2 class="card-title">Начальный остаток</h2>
+        <p class="explain">
+          Сколько денег было на руках, когда вы начали вести учёт. С этой суммы стартует
+          сквозной баланс «Свободно» на Главной: к ней прибавляются все доходы и вычитаются
+          все расходы за историю.
+        </p>
+        <div class="sb-row">
+          <input class="input num" inputmode="numeric" placeholder="0" bind:value={startBalance} />
+          <button class="btn btn-secondary" onclick={saveStartBalance}>Сохранить</button>
+        </div>
+      </div>
+
+      <div class="card stack">
         <h2 class="card-title">Экспорт данных</h2>
         <p class="explain">
           Выгружаются данные только вашего пространства{$me?.workspace ? ` («${$me.workspace.name}»)` : ''}.
@@ -348,6 +374,8 @@
 </div>
 
 <style>
+  .sb-row { display: flex; gap: var(--space-2); }
+  .sb-row .input { flex: 1; }
   .items { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4); }
   .item {
     display: flex; flex-direction: column; gap: 8px;

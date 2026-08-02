@@ -19,7 +19,9 @@ def db():
     cat = Category(workspace_id=WS, name="Продукты", group="needs", sort_order=1)
     s.add(cat)
     s.commit()
-    s.add(Transaction(workspace_id=WS, type="expense", amount=Decimal("1560"), date=date.today(), category_id=cat.id))
+    # Fixed date matching the `now` used by the tests below — date.today()
+    # here made the suite fail as soon as the calendar month rolled over.
+    s.add(Transaction(workspace_id=WS, type="expense", amount=Decimal("1560"), date=date(2026, 7, 2), category_id=cat.id))
     s.commit()
     yield s
     s.close()

@@ -36,6 +36,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 class GeneralBody(BaseModel):
     currency: str | None = None
+    start_balance: str | None = None
 
 
 @router.get("")
@@ -44,12 +45,22 @@ def get_settings(db: Session = Depends(get_db), ws: int = Depends(ws_id)):
 
     return {
         "currency": get_setting(db, ws, "currency", ""),
+        "start_balance": get_setting(db, ws, "start_balance", "0"),
         "onboarded": is_onboarded(db, ws),
     }
 
 
 @router.post("/general")
 def update_general(body: GeneralBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    if body.start_balance is not None:
+        from decimal import Decimal, InvalidOperation
+
+        from fastapi import HTTPException
+
+        try:
+            body.start_balance = str(Decimal(body.start_balance.replace(",", ".").replace(" ", "") or "0"))
+        except InvalidOperation:
+            raise HTTPException(400, "start_balance должен быть числом")
     for key, value in body.model_dump(exclude_none=True).items():
         set_setting(db, ws, key, value)
     return {"ok": True}

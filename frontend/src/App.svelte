@@ -132,8 +132,8 @@
     <SideNav
       onadd={openAdd}
       brandSub={usersLabel}
-      freeAmount={summary ? money(summary.remaining) : ''}
-      perDay={summary && daysLeft > 0 ? money(summary.remaining / daysLeft) : '0'}
+      freeAmount={summary ? money(summary.balance) : ''}
+      perDay={summary && daysLeft > 0 ? money(summary.balance / daysLeft) : '0'}
       {daysLeft}
     />
 
