@@ -22,6 +22,7 @@
   import Categories from './routes/Categories.svelte'
   import Transactions from './routes/Transactions.svelte'
   import Integrations from './routes/Integrations.svelte'
+  import Wallet from './routes/Wallet.svelte'
   import Admin from './routes/Admin.svelte'
 
   let onboarded = $state<boolean | null>(null)
@@ -81,7 +82,8 @@
     more: { title: 'Настройки', sub: 'Семья, категории, интеграции' },
     faq: { title: 'Вопросы', sub: 'Как считаются цифры', period: false },
     categories: { title: 'Категории', sub: 'Названия, иконки и группы', period: false },
-    integrations: { title: 'Интеграции', sub: 'Telegram-бот, AI и кошелёк USDC', period: false },
+    integrations: { title: 'Интеграции', sub: 'Telegram-бот и AI', period: false },
+    wallet: { title: 'Кошелёк USDC', sub: 'Баланс ERC-20 и уведомление о зарплате', period: false },
     admin: { title: 'Админка', sub: 'Пространства, аккаунты и инвайты', period: false },
   }
   let head = $derived(TITLES[$route] ?? TITLES.dashboard)
@@ -159,6 +161,8 @@
         <Categories />
       {:else if $route === 'transactions'}
         <Transactions />
+      {:else if $route === 'wallet'}
+        <Wallet />
       {:else if $route === 'integrations' && $me?.is_admin}
         <Integrations />
       {:else if $route === 'admin' && $me?.is_admin}

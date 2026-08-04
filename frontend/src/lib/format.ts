@@ -21,6 +21,21 @@ export function usdc(value: number | null | undefined): string {
     .replace(/\s/g, ' ')
 }
 
+/** Порог и прочие круглые суммы: без копеек, если они нулевые («1 000»). */
+export function usdcRound(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 }).replace(/\s/g, ' ')
+}
+
+/** Целая и дробная части: ['12', ',57'].
+ *  В моно-шрифте запятая занимает целую ячейку, и «12,57» крупным кеглем читается
+ *  как «12, 57» — поэтому копейки рисуем отдельным мелким span'ом. */
+export function usdcParts(value: number | null | undefined): [string, string] {
+  const text = usdc(value)
+  const i = text.lastIndexOf(',')
+  return i === -1 ? [text, ''] : [text.slice(0, i), text.slice(i)]
+}
+
 /** «2026-08-04T17:35:02» → «17:35». Пустая строка, если времени нет. */
 export function timeOnly(iso: string | null | undefined): string {
   if (!iso) return ''

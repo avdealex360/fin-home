@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from '../api'
-  import { authenticated } from '../stores'
+  import { authenticated, me } from '../stores'
 
   let username = $state('')
   let password = $state('')
@@ -14,6 +14,9 @@
     error = ''
     try {
       await api.login(username, password)
+      // Без этого $me остаётся «неавторизованным» до перезагрузки страницы, и
+      // админские разделы («Телеграм-бот и AI», «Админка») не показываются.
+      me.set(await api.authMe())
       authenticated.set(true)
     } catch (err) {
       error = 'Неверный логин или пароль'

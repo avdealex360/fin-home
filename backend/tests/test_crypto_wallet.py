@@ -108,10 +108,19 @@ def test_status_masks_address_and_hides_key(db, ws):
 def test_save_config_keeps_key_when_blank(db, ws):
     cw.save_config(db, ws, address=ADDRESS, api_key="secret-key", threshold="1000")
     cw.save_config(db, ws, api_key="")  # пустое поле = не трогать сохранённый ключ
-    from app.services.settings_store import get_secret
-
-    assert get_secret(db, "secret.etherscan_api_key") == "secret-key"
+    assert cw.get_api_key(db, ws) == "secret-key"
     assert cw.status(db, ws).threshold == Decimal("1000")
+
+
+def test_api_key_is_per_workspace_with_install_wide_fallback(db, ws):
+    other = create_workspace(db, name="Другая семья").id
+    cw.save_config(db, ws, api_key="mine")
+    # Ключ одного workspace не утекает в другой…
+    assert cw.get_api_key(db, other) == ""
+    # …но install-wide значение работает как общий запасной вариант.
+    set_secret(db, "secret.etherscan_api_key", "shared")
+    assert cw.get_api_key(db, other) == "shared"
+    assert cw.get_api_key(db, ws) == "mine"  # свой ключ важнее общего
 
 
 def test_save_config_empty_address_disables(db, ws):
@@ -244,3 +253,22 @@ def test_wallet_rejects_bad_address(api):
     r = api.client.post("/api/wallet", json={"address": "0x123"})
     assert r.status_code == 400
     assert "hex" in r.json()["detail"]
+
+
+def test_non_admin_can_configure_wallet(api):
+    """Кошелёк — не админская настройка: жена в том же workspace тоже может."""
+    from app.services.auth import SESSION_COOKIE, create_session_token
+
+    from tests.conftest import create_account
+
+    s = api.Session()
+    member = create_account(s, api.ws_id, username="wife", is_admin=False)
+    s.close()
+
+    api.client.cookies.set(SESSION_COOKIE, create_session_token(member.id))
+    r = api.client.post("/api/wallet", json={"address": ADDRESS, "threshold": "500"})
+    assert r.status_code == 200, r.text
+    assert r.json()["address_set"] is True
+    assert api.client.get("/api/wallet").status_code == 200
+    # А админские настройки бота по-прежнему закрыты.
+    assert api.client.get("/api/settings/integrations").status_code == 403

@@ -2,7 +2,7 @@
   import { api, type Category, type MonthSummary, type Transaction } from '../lib/api'
   import { period, dataVersion, showHelp, showToast, invalidate, navigate } from '../lib/stores'
   import { wallet, loadWalletOnce, loadWallet, refreshIfStale } from '../lib/wallet'
-  import { money, monthName, formatDate, usdc, timeOnly } from '../lib/format'
+  import { money, monthName, formatDate, usdcRound, usdcParts, timeOnly } from '../lib/format'
   import { monthPace } from '../lib/insights'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
   import Loader from '../lib/components/Loader.svelte'
@@ -80,6 +80,8 @@
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })()
 
+  let walletAmount = $derived(usdcParts($wallet?.balance))
+
   function toggleFlip() {
     flipped = !flipped
     if (flipped) void refreshIfStale()
@@ -137,7 +139,8 @@
                 {money(summary.balance)} ₽<i class="ti ti-rotate-2 flip-hint"></i>
               </span>
               <span class="face back num hero-amount">
-                {usdc($wallet.balance)} <span class="ticker">USDC</span>
+                <span>{walletAmount[0]}<span class="frac">{walletAmount[1]}</span></span>
+                <span class="ticker">USDC</span>
               </span>
             </span>
           </button>
@@ -162,7 +165,7 @@
             <span class="f blue">Адрес {$wallet.address}</span>
             <span class="f green">Обновлено {timeOnly($wallet.checked_at) || '—'}</span>
             {#if $wallet.threshold > 0}
-              <span class="f gold">Порог {usdc($wallet.threshold)}</span>
+              <span class="f gold">Порог {usdcRound($wallet.threshold)}</span>
             {/if}
           </div>
           {#if $wallet.error}
@@ -172,17 +175,17 @@
           <div class="hero-foot">
             <div>
               <div class="k">Уведомление в Telegram</div>
-              <div class="num v {$wallet.threshold > 0 ? 'green' : 'yellow'}">
-                {$wallet.threshold > 0 ? `от ${usdc($wallet.threshold)} USDC` : 'порог не задан'}
+              <div class="v vtext {$wallet.threshold > 0 ? 'green' : 'yellow'}">
+                {$wallet.threshold > 0 ? `от ${usdcRound($wallet.threshold)} USDC` : 'порог не задан'}
               </div>
             </div>
             <div>
               <div class="k">За этот месяц</div>
-              <div class="num v blue">
+              <div class="v vtext blue">
                 {$wallet.alert_month === currentMonthKey ? 'уже отправлено' : 'ещё не отправляли'}
               </div>
             </div>
-            <button class="chip blue" onclick={refreshWallet} disabled={walletBusy}>
+            <button class="chip blue wrefresh" onclick={refreshWallet} disabled={walletBusy}>
               <i class="ti ti-refresh"></i>{walletBusy ? 'Обновляю…' : 'Обновить'}
             </button>
           </div>
@@ -442,12 +445,23 @@
     transition: transform 0.55s cubic-bezier(0.34, 1.1, 0.4, 1);
   }
   .flip.flipped .flip-inner { transform: rotateX(180deg); }
-  .face { grid-area: 1 / 1; backface-visibility: hidden; display: flex; align-items: baseline; gap: 8px; }
+  /* flex-wrap: длинный баланс (7 знаков + тикер) переносится, а не вылезает за карточку. */
+  .face {
+    grid-area: 1 / 1; backface-visibility: hidden;
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px;
+  }
   .face.back { transform: rotateX(180deg); color: var(--blue); }
   .ticker { font-size: 0.42em; font-weight: 600; letter-spacing: 0.04em; color: var(--text-secondary); }
+  .frac { font-size: 0.55em; color: var(--text-secondary); }
   .flip-hint { font-size: 17px; color: var(--text-muted); align-self: center; }
   .flip:hover .flip-hint { color: var(--blue); }
   .wallet-err { color: var(--red); }
+  /* Текст вместо суммы: моно-шрифт и 19px тут были бы тяжеловесны. */
+  .vtext { font-size: 15px; font-weight: 500; }
+  /* .chip рассчитан на span: у button остаётся рамка агента, и палец требует
+     цели повыше, чем 26px чипа. */
+  .hero-foot .wrefresh { border: none; min-height: 36px; padding: 0 14px; }
+  .hero-foot .wrefresh:disabled { opacity: 0.6; }
 
   @media (prefers-reduced-motion: reduce) {
     .flip-inner { transition: none; }

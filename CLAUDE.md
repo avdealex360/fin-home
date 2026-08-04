@@ -101,14 +101,16 @@ the app's «Интеграции» screen. People link to Telegram via `AppUser.
 ## USDC wallet (Etherscan)
 
 Personal read-only integration for a salary paid in USDC (`services/crypto_wallet.py` +
-`api/wallet.py`, UI in the «Интеграции» screen + a flip on the Dashboard hero). An
+`api/wallet.py`, UI in `routes/Wallet.svelte` at `#/wallet` — open to any workspace
+member, not admin-only — plus a flip on the Dashboard hero). An
 asyncio task started in `main.py`'s lifespan polls Etherscan **V2**
 (`api.etherscan.io/v2/api?chainid=1`, `action=tokenbalance`, USDC has 6 decimals)
 every 5 minutes, caches the balance in `Setting` and sends **one Telegram message per
 calendar month** once the balance crosses `wallet_threshold` (guard key
 `wallet.alert_month`). Per-workspace keys: `wallet_address`, `wallet_threshold`,
 `wallet_notify_user_id` + cache `wallet.{balance,checked_at,error,alert_month}`; the
-Etherscan key is the install-wide secret `secret.etherscan_api_key`. The API never
+Etherscan key is `secret.etherscan_api_key` **per workspace** (install-wide value kept
+as a fallback via `crypto_wallet.get_api_key`). The API never
 returns the raw address — only a `0x5564…3148` mask. No ledger effect, no migrations.
 Setup guide: `docs/usdc-wallet-setup.md`.
 

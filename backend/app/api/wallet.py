@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_admin, ws_id
+from app.api.deps import ws_id
 from app.db import get_db
 from app.services import crypto_wallet
 
@@ -36,8 +36,8 @@ def save_wallet(
     body: WalletBody,
     db: Session = Depends(get_db),
     ws: int = Depends(ws_id),
-    _admin: int = Depends(require_admin),
 ):
+    """Доступно любому участнику workspace: кошелёк и ключ живут в его пределах."""
     try:
         return crypto_wallet.save_config(
             db,

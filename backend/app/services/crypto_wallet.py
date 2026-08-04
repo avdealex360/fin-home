@@ -11,7 +11,8 @@ USDC, кладёт его в кэш (`Setting`) и — не чаще одног�
     wallet_notify_user_id   — кому писать; пусто = всем привязанным к Telegram
 Состояние кэша (тот же workspace):
     wallet.balance, wallet.checked_at, wallet.error, wallet.alert_month
-Ключ Etherscan — install-wide секрет `secret.etherscan_api_key` (как токен бота).
+Ключ Etherscan — `secret.etherscan_api_key` в пределах workspace (кошелёк у каждого
+свой, поэтому и ключ свой); install-wide значение остаётся общим запасным вариантом.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, Setting
-from app.services.settings_store import get_secret, get_setting, set_secret, set_setting
+from app.services.settings_store import get_secret, get_setting, set_setting
 from app.services.tg_client import send_message
 
 log = logging.getLogger("crypto_wallet")
@@ -43,6 +44,13 @@ POLL_INTERVAL_SECONDS = 300  # 5 минут
 _FIRST_POLL_DELAY_SECONDS = 20  # чтобы к первому открытию приложения баланс уже был
 
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+_KEY = "secret.etherscan_api_key"
+
+
+def get_api_key(db: Session, ws: int) -> str:
+    """Ключ workspace, а если его нет — install-wide (одна подписка на всех)."""
+    return get_setting(db, ws, _KEY, "") or get_secret(db, _KEY)
 
 
 class WalletError(Exception):
@@ -106,7 +114,7 @@ def _cached_decimal(db: Session, ws: int, key: str) -> Decimal | None:
 def status(db: Session, ws: int) -> WalletStatus:
     """Статус из кэша — без обращения к Etherscan."""
     address = get_setting(db, ws, "wallet_address", "")
-    api_key_set = bool(get_secret(db, "secret.etherscan_api_key"))
+    api_key_set = bool(get_api_key(db, ws))
     notify_raw = get_setting(db, ws, "wallet_notify_user_id", "")
     return WalletStatus(
         configured=bool(address) and api_key_set,
@@ -134,9 +142,9 @@ def save_config(
     """None = «не трогать». Для адреса и порога пустая строка = сбросить."""
     if address is not None:
         set_setting(db, ws, "wallet_address", normalize_address(address))
-    # Пустой ключ = оставить сохранённый (set_secret игнорирует пустое значение).
-    if api_key is not None:
-        set_secret(db, "secret.etherscan_api_key", api_key.strip())
+    # Пустое поле = оставить сохранённый ключ, как у остальных секретов.
+    if api_key and api_key.strip():
+        set_setting(db, ws, _KEY, api_key.strip())
     if threshold is not None:
         set_setting(db, ws, "wallet_threshold", str(parse_amount(threshold)))
     if notify_user_id is not None:
@@ -225,7 +233,7 @@ def _maybe_notify(
 def check(db: Session, ws: int, *, now: datetime | None = None, notify: bool = True) -> WalletStatus:
     """Тянет баланс, обновляет кэш и при необходимости шлёт уведомление."""
     address = get_setting(db, ws, "wallet_address", "")
-    api_key = get_secret(db, "secret.etherscan_api_key")
+    api_key = get_api_key(db, ws)
     if not address or not api_key:
         return status(db, ws)
     now = now or datetime.now()
