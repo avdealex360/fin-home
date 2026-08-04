@@ -161,6 +161,21 @@ export interface Deposit {
   rate_schedule: string
 }
 
+/** Кошелёк USDC (ERC-20) — см. backend/app/services/crypto_wallet.py::WalletStatus. */
+export interface WalletStatus {
+  configured: boolean
+  /** Маска адреса, например 0x1234…cdef. Полный адрес наружу не отдаём. */
+  address: string
+  address_set: boolean
+  api_key_set: boolean
+  threshold: number
+  notify_user_id: number | null
+  balance: number | null
+  checked_at: string
+  error: string
+  alert_month: string
+}
+
 export interface Integrations {
   tg_bot_token: boolean
   yandex_api_key: boolean
@@ -323,4 +338,10 @@ export const api = {
   }>) => req('POST', '/settings/integrations', b),
   testIntegrations: () => req<{ telegram: boolean; yandex: boolean; gigachat: boolean }>('POST', '/settings/integrations/test'),
   setWebhook: () => req<{ ok: boolean; url: string; error?: string }>('POST', '/settings/integrations/set-webhook'),
+
+  wallet: () => req<WalletStatus>('GET', '/wallet'),
+  saveWallet: (b: Partial<{
+    address: string; etherscan_api_key: string; threshold: string; notify_user_id: number
+  }>) => req<WalletStatus>('POST', '/wallet', b),
+  refreshWallet: () => req<WalletStatus>('POST', '/wallet/refresh'),
 }

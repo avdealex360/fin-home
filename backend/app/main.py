@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,12 +18,14 @@ from app.api import (
     settings,
     telegram,
     transactions,
+    wallet,
 )
 from app.db import SessionLocal
 from app.migrations import run_migrations
 from app.seed import ensure_admin_account, ensure_startup_data
 from app.services.ai_trace import LOG_FILE, trace_block
 from app.services.auth import SESSION_COOKIE, session_account_id
+from app.services.crypto_wallet import poll_loop as wallet_poll_loop
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -42,7 +45,16 @@ async def lifespan(app: FastAPI):
         db.close()
     build_id = _BUILD_ID.read_text(encoding="utf-8").strip() if _BUILD_ID.is_file() else "local"
     trace_block("app.started", build_id=build_id, log_file=str(LOG_FILE.resolve()))
-    yield
+    # Опрос USDC-кошельков: одна задача на процесс (uvicorn поднимается одним воркером).
+    wallet_task = asyncio.create_task(wallet_poll_loop(SessionLocal))
+    try:
+        yield
+    finally:
+        wallet_task.cancel()
+        try:
+            await wallet_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -126,6 +138,7 @@ for router in (
     analytics.router,
     settings.router,
     telegram.router,
+    wallet.router,
 ):
     app.include_router(router)
 

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { api, type Category, type MonthSummary, type Transaction } from '../lib/api'
   import { period, dataVersion, showHelp, showToast, invalidate, navigate } from '../lib/stores'
-  import { money, monthName, formatDate } from '../lib/format'
+  import { wallet, loadWalletOnce, loadWallet, refreshIfStale } from '../lib/wallet'
+  import { money, monthName, formatDate, usdc, timeOnly } from '../lib/format'
   import { monthPace } from '../lib/insights'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
   import Loader from '../lib/components/Loader.svelte'
@@ -67,6 +68,27 @@
       .sort((a: any, b: any) => b.spent - a.spent)
   })
 
+  // Кошелёк USDC: если он настроен, тап по большому числу переворачивает карточку
+  // с рублёвого баланса на баланс кошелька (и обратно).
+  loadWalletOnce()
+  let flipped = $state(false)
+  let walletBusy = $state(false)
+  // Календарный месяц, а не просматриваемый: правило «одно письмо в месяц» живёт
+  // по реальной дате, независимо от того, какой месяц открыт в шапке.
+  const currentMonthKey = (() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })()
+
+  function toggleFlip() {
+    flipped = !flipped
+    if (flipped) void refreshIfStale()
+  }
+  async function refreshWallet() {
+    walletBusy = true
+    try { await loadWallet(true) } finally { walletBusy = false }
+  }
+
   let editingTx = $state<Transaction | null>(null)
   function openEdit(tx: Transaction) { editingTx = tx }
   function onEdited() { editingTx = null; invalidate(); showToast('Операция изменена') }
@@ -93,45 +115,107 @@
       <!-- HERO: one number, and the arithmetic behind it. -->
       <section class="hero col-wide">
         <div class="hero-top">
-          <span class="section-label">Свободно до конца месяца</span>
-          <span class="chip blue">осталось {pace.daysLeft} дн.</span>
+          <span class="section-label">{flipped ? 'Кошелёк USDC (ERC-20)' : 'Свободно до конца месяца'}</span>
+          {#if flipped}
+            <span class="chip blue"><i class="ti ti-brand-ethereum"></i>Ethereum</span>
+          {:else}
+            <span class="chip blue">осталось {pace.daysLeft} дн.</span>
+          {/if}
         </div>
-        <div class="num hero-amount">{money(summary.balance)} ₽</div>
+
+        {#if $wallet?.configured}
+          <!-- Переворот: рубли ⇄ баланс кошелька. Показываем только когда кошелёк настроен. -->
+          <button
+            class="flip"
+            class:flipped
+            title="Нажмите, чтобы перевернуть: рубли ⇄ USDC"
+            aria-label={flipped ? 'Показать рублёвый баланс' : 'Показать баланс кошелька USDC'}
+            onclick={toggleFlip}
+          >
+            <span class="flip-inner">
+              <span class="face num hero-amount">
+                {money(summary.balance)} ₽<i class="ti ti-rotate-2 flip-hint"></i>
+              </span>
+              <span class="face back num hero-amount">
+                {usdc($wallet.balance)} <span class="ticker">USDC</span>
+              </span>
+            </span>
+          </button>
+        {:else}
+          <div class="num hero-amount">{money(summary.balance)} ₽</div>
+        {/if}
+
         {#if $showHelp}
           <p class="explain">
-            Сквозной баланс: остаток прошлых месяцев плюс доход этого месяца, минус траты
-            и отложенное. Начальный остаток задаётся в «Ещё» → «Начальный остаток».
+            {#if flipped}
+              Баланс кошелька по данным Etherscan, обновляется раз в 5 минут. На бюджет не
+              влияет: когда зарплата придёт — запишите её обычной операцией «Доход».
+            {:else}
+              Сквозной баланс: остаток прошлых месяцев плюс доход этого месяца, минус траты
+              и отложенное. Начальный остаток задаётся в «Ещё» → «Начальный остаток».
+            {/if}
           </p>
         {/if}
 
-        <!-- «Траты» здесь без сбережений: отложенное вынесено отдельным слагаемым,
-             иначе оно визуально вычиталось бы дважды и формула не сходилась бы
-             с числом сверху. -->
-        <div class="formula num">
-          <span class="f blue">Остаток {money(summary.carryover)}</span>
-          <span class="op">+</span>
-          <span class="f green">Доход {money(summary.income_fact)}</span>
-          <span class="op">−</span>
-          <span class="f red">Траты {money(summary.total_spent - saved)}</span>
-          <span class="op">−</span>
-          <span class="f gold">Отложено {money(saved)}</span>
-        </div>
-
-        <div class="hero-foot">
-          <div>
-            <div class="k">Можно тратить в день</div>
-            <div class="num v green">{money(perDay)} ₽</div>
+        {#if flipped && $wallet}
+          <div class="formula num">
+            <span class="f blue">Адрес {$wallet.address}</span>
+            <span class="f green">Обновлено {timeOnly($wallet.checked_at) || '—'}</span>
+            {#if $wallet.threshold > 0}
+              <span class="f gold">Порог {usdc($wallet.threshold)}</span>
+            {/if}
           </div>
-          <div>
-            <div class="k">Тратите сейчас в день</div>
-            <div class="num v yellow">{money(pace.perDaySoFar)} ₽</div>
-          </div>
-          {#if paceDelta > 3}
-            <span class="chip yellow"><i class="ti ti-trending-up"></i>Темп выше плана на {paceDelta}%</span>
-          {:else}
-            <span class="chip green"><i class="ti ti-check"></i>Идёте в графике</span>
+          {#if $wallet.error}
+            <p class="explain wallet-err">Etherscan: {$wallet.error}</p>
           {/if}
-        </div>
+
+          <div class="hero-foot">
+            <div>
+              <div class="k">Уведомление в Telegram</div>
+              <div class="num v {$wallet.threshold > 0 ? 'green' : 'yellow'}">
+                {$wallet.threshold > 0 ? `от ${usdc($wallet.threshold)} USDC` : 'порог не задан'}
+              </div>
+            </div>
+            <div>
+              <div class="k">За этот месяц</div>
+              <div class="num v blue">
+                {$wallet.alert_month === currentMonthKey ? 'уже отправлено' : 'ещё не отправляли'}
+              </div>
+            </div>
+            <button class="chip blue" onclick={refreshWallet} disabled={walletBusy}>
+              <i class="ti ti-refresh"></i>{walletBusy ? 'Обновляю…' : 'Обновить'}
+            </button>
+          </div>
+        {:else}
+          <!-- «Траты» здесь без сбережений: отложенное вынесено отдельным слагаемым,
+               иначе оно визуально вычиталось бы дважды и формула не сходилась бы
+               с числом сверху. -->
+          <div class="formula num">
+            <span class="f blue">Остаток {money(summary.carryover)}</span>
+            <span class="op">+</span>
+            <span class="f green">Доход {money(summary.income_fact)}</span>
+            <span class="op">−</span>
+            <span class="f red">Траты {money(summary.total_spent - saved)}</span>
+            <span class="op">−</span>
+            <span class="f gold">Отложено {money(saved)}</span>
+          </div>
+
+          <div class="hero-foot">
+            <div>
+              <div class="k">Можно тратить в день</div>
+              <div class="num v green">{money(perDay)} ₽</div>
+            </div>
+            <div>
+              <div class="k">Тратите сейчас в день</div>
+              <div class="num v yellow">{money(pace.perDaySoFar)} ₽</div>
+            </div>
+            {#if paceDelta > 3}
+              <span class="chip yellow"><i class="ti ti-trending-up"></i>Темп выше плана на {paceDelta}%</span>
+            {:else}
+              <span class="chip green"><i class="ti ti-check"></i>Идёте в графике</span>
+            {/if}
+          </div>
+        {/if}
       </section>
 
       <!-- KPI tiles -->
@@ -344,6 +428,30 @@
   .hero-top { display: flex; align-items: center; gap: var(--space-2); }
   .hero-top .section-label { margin-bottom: 0; }
   .hero-amount { font-size: clamp(38px, 4.4vw, 52px); font-weight: 600; letter-spacing: -0.02em; margin: 8px 0 2px; }
+
+  /* Переворот главного числа: рубли на лицевой стороне, кошелёк USDC на обратной.
+     Обе стороны лежат в одной grid-ячейке, поэтому высота карточки не прыгает. */
+  .flip {
+    align-self: flex-start;
+    padding: 0; border: none; background: none; text-align: left;
+    perspective: 900px; cursor: pointer;
+  }
+  .flip-inner {
+    display: grid;
+    transform-style: preserve-3d;
+    transition: transform 0.55s cubic-bezier(0.34, 1.1, 0.4, 1);
+  }
+  .flip.flipped .flip-inner { transform: rotateX(180deg); }
+  .face { grid-area: 1 / 1; backface-visibility: hidden; display: flex; align-items: baseline; gap: 8px; }
+  .face.back { transform: rotateX(180deg); color: var(--blue); }
+  .ticker { font-size: 0.42em; font-weight: 600; letter-spacing: 0.04em; color: var(--text-secondary); }
+  .flip-hint { font-size: 17px; color: var(--text-muted); align-self: center; }
+  .flip:hover .flip-hint { color: var(--blue); }
+  .wallet-err { color: var(--red); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flip-inner { transition: none; }
+  }
 
   .formula { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); font-size: 12.5px; }
   .formula .f { padding: 6px 11px; border-radius: 10px; }

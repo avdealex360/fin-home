@@ -18,7 +18,7 @@ A personal family budget web app (Russian UI) implementing the **50/30/20 rule**
 backend/          — FastAPI JSON API
   app/
     main.py        — app: mounts /api routers, migrations + ensure_settings on startup,
-                     serves built SPA from static_spa/ if present
+                     USDC wallet poll task, serves built SPA from static_spa/ if present
     config.py, db.py, util.py
     models/__init__.py — ALL SQLAlchemy models in one file
     migrations.py  — Alembic wrapper run on startup
@@ -33,7 +33,8 @@ frontend/         — Svelte 5 + Vite PWA
     app.css        — design tokens (dark, Inter + JetBrains Mono, semantic colors)
     lib/api.ts     — typed fetch client for /api
     lib/stores.ts  — period, hash route, toast, dataVersion(invalidate)
-    lib/format.ts  — money / dates / month names
+    lib/format.ts  — money / usdc / dates / month names
+    lib/wallet.ts  — USDC wallet status store (drives the Dashboard balance flip)
     lib/components/ — BottomSheet, Toast, MoneyInput, ProgressBar, TxForm,
                       Chart, BottomNav, Onboarding, Login
     routes/        — Dashboard, Transactions (full history: multi-select/group filters,
@@ -96,6 +97,20 @@ modes/topics/styles for variety, and re-rolls every hour. Keys live in the
 `Setting` table under `secret.*` (excluded from export, masked in GET), editable in
 the app's «Интеграции» screen. People link to Telegram via `AppUser.telegram_id`
 (also the access whitelist). Setup guide: `docs/telegram-bot-setup.md`.
+
+## USDC wallet (Etherscan)
+
+Personal read-only integration for a salary paid in USDC (`services/crypto_wallet.py` +
+`api/wallet.py`, UI in the «Интеграции» screen + a flip on the Dashboard hero). An
+asyncio task started in `main.py`'s lifespan polls Etherscan **V2**
+(`api.etherscan.io/v2/api?chainid=1`, `action=tokenbalance`, USDC has 6 decimals)
+every 5 minutes, caches the balance in `Setting` and sends **one Telegram message per
+calendar month** once the balance crosses `wallet_threshold` (guard key
+`wallet.alert_month`). Per-workspace keys: `wallet_address`, `wallet_threshold`,
+`wallet_notify_user_id` + cache `wallet.{balance,checked_at,error,alert_month}`; the
+Etherscan key is the install-wide secret `secret.etherscan_api_key`. The API never
+returns the raw address — only a `0x5564…3148` mask. No ledger effect, no migrations.
+Setup guide: `docs/usdc-wallet-setup.md`.
 
 ## Deployment
 

@@ -81,7 +81,7 @@
     more: { title: 'Настройки', sub: 'Семья, категории, интеграции' },
     faq: { title: 'Вопросы', sub: 'Как считаются цифры', period: false },
     categories: { title: 'Категории', sub: 'Названия, иконки и группы', period: false },
-    integrations: { title: 'Интеграции', sub: 'Telegram-бот и импорт', period: false },
+    integrations: { title: 'Интеграции', sub: 'Telegram-бот, AI и кошелёк USDC', period: false },
     admin: { title: 'Админка', sub: 'Пространства, аккаунты и инвайты', period: false },
   }
   let head = $derived(TITLES[$route] ?? TITLES.dashboard)
