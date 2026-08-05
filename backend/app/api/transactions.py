@@ -17,7 +17,11 @@ from app.serializers import transaction_dict
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
-_SORT_COLUMNS = {"date": Transaction.date, "amount": Transaction.amount}
+_SORT_COLUMNS = {
+    "date": Transaction.date,
+    "amount": Transaction.amount,
+    "created_at": Transaction.created_at,
+}
 
 
 class TransactionBody(BaseModel):

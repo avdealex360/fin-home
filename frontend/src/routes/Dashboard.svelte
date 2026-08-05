@@ -25,7 +25,7 @@
       api.dashboard(year, month),
       api.transactions(8, year, month),
       api.plan(year, month),
-      api.categories(),
+      api.categories(undefined, true),
     ])
     summary = s
     recent = r
@@ -330,7 +330,11 @@
         {:else}
           <div class="txs">
             {#each recent as t (t.id)}
+              {@const cat = categories.find((c) => c.id === t.category_id)}
               <div class="tx">
+                <span class="tx-ic" style="background: {(cat?.color ?? '#5b6478')}22; color: {cat?.color ?? 'var(--text-muted)'}">
+                  <i class="ti {cat?.icon ?? (t.type === 'income' ? 'ti-arrow-down-left' : 'ti-circle')}"></i>
+                </span>
                 <div class="tx-main">
                   <div class="small">{t.category_name ?? (t.type === 'income' ? 'Доход' : 'Без категории')}</div>
                   <div class="dim tiny">
@@ -522,6 +526,7 @@
 
   .txs { margin-top: var(--space-2); }
   .tx { display: flex; align-items: center; gap: var(--space-3); padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .tx-ic { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 11px; display: grid; place-items: center; font-size: 17px; }
   .tx:last-child { border-bottom: none; }
   .tx-main { flex: 1; min-width: 0; }
   .amt { font-size: 14px; font-weight: 500; white-space: nowrap; }

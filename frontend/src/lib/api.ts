@@ -268,8 +268,9 @@ export const api = {
   dashboard: (year?: number, month?: number) =>
     req<MonthSummary>('GET', `/dashboard${ym(year, month)}`),
 
+  // Dashboard "recent" feed: newest-entered first (created_at), not by operation date
   transactions: (limit = 20, year?: number, month?: number) => {
-    const p = new URLSearchParams({ limit: String(limit) })
+    const p = new URLSearchParams({ limit: String(limit), sort_by: 'created_at' })
     if (year) p.set('year', String(year))
     if (month) p.set('month', String(month))
     return req<TransactionListResponse>('GET', `/transactions?${p}`).then((r) => r.items)
