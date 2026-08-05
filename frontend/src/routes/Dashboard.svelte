@@ -119,7 +119,7 @@
         <div class="hero-top">
           <span class="section-label">{flipped ? 'Кошелёк USDC (ERC-20)' : 'Свободно до конца месяца'}</span>
           {#if flipped}
-            <span class="chip blue"><i class="ti ti-brand-ethereum"></i>Ethereum</span>
+            <span class="chip blue"><i class="ti ti-currency-ethereum"></i>Ethereum</span>
           {:else}
             <span class="chip blue">осталось {pace.daysLeft} дн.</span>
           {/if}
