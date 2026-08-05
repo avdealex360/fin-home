@@ -31,7 +31,7 @@ def category_dict(c: Category) -> dict:
         "group": c.group,
         "is_hidden": c.is_hidden,
         "sort_order": c.sort_order,
-        "icon": icon["icon"],
+        "icon": c.icon or icon["icon"],
         "color": icon["color"],
     }
 

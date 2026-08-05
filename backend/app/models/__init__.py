@@ -71,6 +71,7 @@ class Category(Base):
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     group: Mapped[str] = mapped_column(String(20), nullable=False)  # needs, wants, savings, income
+    icon: Mapped[str | None] = mapped_column(String(64), nullable=True)  # user override, ti-* name
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 

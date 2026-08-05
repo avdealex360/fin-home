@@ -96,6 +96,7 @@ class CategoryBody(BaseModel):
     group: str  # needs | wants | savings | income
     sort_order: int | None = None
     is_hidden: bool | None = None
+    icon: str | None = None  # ti-* name; empty string resets to the default
 
 
 @router.get("/categories")
@@ -122,6 +123,7 @@ def create_category(body: CategoryBody, db: Session = Depends(get_db), ws: int =
         name=body.name,
         group=body.group,
         sort_order=body.sort_order if body.sort_order is not None else max_order + 1,
+        icon=body.icon or None,
     )
     db.add(c)
     db.commit()
@@ -140,6 +142,8 @@ def update_category(cat_id: int, body: CategoryBody, db: Session = Depends(get_d
         c.sort_order = body.sort_order
     if body.is_hidden is not None:
         c.is_hidden = body.is_hidden
+    if body.icon is not None:
+        c.icon = body.icon or None
     db.commit()
     db.refresh(c)
     return category_dict(c)
