@@ -43,6 +43,22 @@ def test_market_returns_quotes_for_watchlist(api, monkeypatch):
     assert seen["tickers"] == ["SBER"]
 
 
+def test_watchlist_is_workspace_scoped(api):
+    from app.services.auth import SESSION_COOKIE, create_session_token
+    from tests.conftest import create_account, create_workspace
+
+    api.client.put("/api/invest/watchlist", json={"tickers": ["LKOH"]})
+
+    s = api.Session()
+    other_ws = create_workspace(s, name="Другая")
+    other = create_account(s, other_ws.id, username="other")
+    s.close()
+
+    api.client.cookies.set(SESSION_COOKIE, create_session_token(other.id))
+    r = api.client.get("/api/invest/watchlist")
+    assert r.json()["tickers"] == ["IMOEX", "SBER", "SBMX", "LQDT"]
+
+
 def test_market_degrades_when_moex_down(api, monkeypatch):
     def boom(tickers):
         raise MoexError("connect timeout")

@@ -26,11 +26,11 @@
 **Interfaces:**
 - Produces: `Quote` dataclass `(ticker: str, name: str, price: float | None, change_pct: float | None)`; `get_quotes(tickers: list[str]) -> list[Quote]` (raises `MoexError` on total failure); `_client_factory` hook for tests; module cache `_CACHE` with `_TTL = 600`.
 
-- [ ] Write failing tests: parse shares (TQBR), ETF (TQTF) and index (SNDX) rows from mocked ISS JSON; missing ticker silently absent; network error raises `MoexError`; second call within TTL served from cache (handler counts requests).
-- [ ] Run: `.venv/bin/python -m pytest tests/test_moex.py -q` → FAIL (module missing).
-- [ ] Implement `moex.py`: one request per board — `iss.moex.com/iss/engines/stock/markets/{shares|index}/boards/{TQBR,TQTF,SNDX}/securities.json?iss.meta=off&iss.only=securities,marketdata&securities={csv}`; map columns by name (`SECID`, `SHORTNAME`, `LAST`/`CURRENTVALUE`, `LASTTOPREVPRICE`/`LASTCHANGEPRC`, fallback price `PREVPRICE`/`PREVADMITTEDQUOTE`); merge, preserve watchlist order; time-based cache keyed by sorted tickers.
-- [ ] Run tests → PASS; full suite green.
-- [ ] Commit `feat: MOEX ISS quotes client with in-memory cache`.
+- [x] Write failing tests: parse shares (TQBR), ETF (TQTF) and index (SNDX) rows from mocked ISS JSON; missing ticker silently absent; network error raises `MoexError`; second call within TTL served from cache (handler counts requests).
+- [x] Run: `.venv/bin/python -m pytest tests/test_moex.py -q` → FAIL (module missing).
+- [x] Implement `moex.py`: one request per board — `iss.moex.com/iss/engines/stock/markets/{shares|index}/boards/{TQBR,TQTF,SNDX}/securities.json?iss.meta=off&iss.only=securities,marketdata&securities={csv}`; map columns by name (`SECID`, `SHORTNAME`, `LAST`/`CURRENTVALUE`, `LASTTOPREVPRICE`/`LASTCHANGEPRC`, fallback price `PREVPRICE`/`PREVADMITTEDQUOTE`); merge, preserve watchlist order; time-based cache keyed by sorted tickers.
+- [x] Run tests → PASS; full suite green.
+- [x] Commit `feat: MOEX ISS quotes client with in-memory cache`.
 
 ### Task 2: invest API (market + watchlist)
 
@@ -43,9 +43,9 @@
 - Consumes: `moex.get_quotes`, `settings_store.get_setting/set_setting`, `api/deps.py` workspace helper (same as wallet endpoints).
 - Produces: `GET /api/invest/market` → `{"quotes": [{ticker,name,price,change_pct}], "error": null}`; `GET /api/invest/watchlist` → `{"tickers": [...]}` (default `IMOEX,SBER,SBMX,LQDT` persisted on first read); `PUT /api/invest/watchlist` body `{"tickers": [...]}` (validate `^[A-Z0-9]{1,12}$`, 1..20 items, uppercase, 422 otherwise).
 
-- [ ] Write failing tests: default watchlist created on first GET; PUT stores and normalizes case; PUT rejects bad ticker/empty list; market endpoint returns quotes (moex monkeypatched) and `{"error": ...}` degradation when `get_quotes` raises `MoexError`; endpoints are workspace-scoped (two workspaces see different watchlists).
-- [ ] Run → FAIL. Implement router. Run → PASS; suite green.
-- [ ] Commit `feat: invest API — market quotes and per-workspace watchlist`.
+- [x] Write failing tests: default watchlist created on first GET; PUT stores and normalizes case; PUT rejects bad ticker/empty list; market endpoint returns quotes (moex monkeypatched) and `{"error": ...}` degradation when `get_quotes` raises `MoexError`; endpoints are workspace-scoped (two workspaces see different watchlists).
+- [x] Run → FAIL. Implement router. Run → PASS; suite green.
+- [x] Commit `feat: invest API — market quotes and per-workspace watchlist`.
 
 ### Task 3: AI market overview
 
@@ -58,9 +58,9 @@
 - Consumes: `moex.get_quotes`, AI completion entry point used by `services/daily_digest.py` (inspect and reuse the same router call), `settings_store`.
 - Produces: `get_or_build(db, ws_id) -> dict` → `{"text": str | None, "date": "YYYY-MM-DD", "configured": bool}`; cache keys `invest.overview`, `invest.overview_date` (per workspace); endpoint returns the dict as-is.
 
-- [ ] Write failing tests: builds text via monkeypatched AI call and caches for the calendar day (AI called once across two invocations); stale date rebuilds; missing AI keys → `configured: false`, no AI call; AI failure → cached=None but no exception.
-- [ ] Run → FAIL. Implement: prompt = beginner-friendly explanation of today's watchlist moves + index, explicit "no buy/sell advice" instruction; append disclaimer server-side. Run → PASS; suite green.
-- [ ] Commit `feat: day-cached AI market overview for invest section`.
+- [x] Write failing tests: builds text via monkeypatched AI call and caches for the calendar day (AI called once across two invocations); stale date rebuilds; missing AI keys → `configured: false`, no AI call; AI failure → cached=None but no exception.
+- [x] Run → FAIL. Implement: prompt = beginner-friendly explanation of today's watchlist moves + index, explicit "no buy/sell advice" instruction; append disclaimer server-side. Run → PASS; suite green.
+- [x] Commit `feat: day-cached AI market overview for invest section`.
 
 ### Task 4: frontend — Invest page
 
@@ -73,15 +73,15 @@
 - Consumes: Task 2/3 endpoints verbatim.
 - Produces: page with three cards — «Рынок сегодня» (quotes list, green/red change, watchlist editor: add input + remove ×), «AI-обзор» (text or hint to Интеграции; disclaimer footer), «База знаний» (static accordion: ИИС-3 и вычеты; классы активов; диверсификация; типовые портфели новичка; типичные ошибки; фонды Сбера SBMX/SBGB/LQDT). Content written in Russian at implementation, reviewed via FAQ-style cards.
 
-- [ ] Implement page + routing + More link following `Wallet.svelte`/`Faq.svelte` patterns; loading/error states for market block.
-- [ ] `npm run build` → clean.
-- [ ] Commit `feat: invest section UI — knowledge base, market watchlist, AI overview`.
+- [x] Implement page + routing + More link following `Wallet.svelte`/`Faq.svelte` patterns; loading/error states for market block.
+- [x] `npm run build` → clean.
+- [x] Commit `feat: invest section UI — knowledge base, market watchlist, AI overview`.
 
 ### Task 5: docs + ship
 
 **Files:**
 - Modify: `frontend/src/routes/Faq.svelte` (card «Инвестиции: база знаний и рынок»), `CLAUDE.md` (new subsection), `docs/superpowers/plans/…` (check boxes)
 
-- [ ] FAQ card + CLAUDE.md subsection (services, endpoints, Setting keys, no-ledger note).
-- [ ] Full backend suite + frontend build green.
-- [ ] Commit `docs: invest section notes in FAQ and CLAUDE.md`, push `origin main`.
+- [x] FAQ card + CLAUDE.md subsection (services, endpoints, Setting keys, no-ledger note).
+- [x] Full backend suite + frontend build green.
+- [x] Commit `docs: invest section notes in FAQ and CLAUDE.md`, push `origin main`.

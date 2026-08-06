@@ -119,6 +119,18 @@ as a fallback via `crypto_wallet.get_api_key`). The API never
 returns the raw address — only a `0x5564…3148` mask. No ledger effect, no migrations.
 Setup guide: `docs/usdc-wallet-setup.md`.
 
+## Invest section (MOEX)
+
+Reference section `#/invest` (`routes/Invest.svelte`, linked from More) — beginner
+knowledge base (static content in the component), live quotes and a daily AI market
+overview. `services/moex.py` polls the keyless MOEX ISS API (one request per board:
+TQBR shares / TQTF funds / SNDX indices, 10-min in-memory cache); `api/invest.py`
+serves `market`, `watchlist` (Setting `invest.watchlist`, default
+`IMOEX,SBER,SBMX,LQDT`) and `overview` — `services/invest_overview.py` builds the
+overview via `ai/router.complete_with_fallback` at most once per workspace per
+calendar day (Setting `invest.overview{,_date}`), appending the «не ИИР» disclaimer
+server-side. No ledger effect, no migrations, no portfolio tracking (deliberately).
+
 ## Deployment
 
 GitHub Actions → VPS on `git push origin main`; VPS runs `scripts/deploy.sh` (git pull + `make prod-rebuild` + `make prod-migrate`). Caddy serves HTTPS (self-signed cert via `scripts/gen-certs.sh`) and proxies to the app, which enforces its own login/session auth.
