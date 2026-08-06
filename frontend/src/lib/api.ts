@@ -176,6 +176,25 @@ export interface WalletStatus {
   alert_month: string
 }
 
+/** Инвестиции — см. backend/app/api/invest.py и services/invest_overview.py. */
+export interface InvestQuote {
+  ticker: string
+  name: string
+  price: number | null
+  change_pct: number | null
+}
+
+export interface InvestMarket {
+  quotes: InvestQuote[]
+  error: string | null
+}
+
+export interface InvestOverview {
+  text: string | null
+  date: string
+  configured: boolean
+}
+
 export interface Integrations {
   tg_bot_token: boolean
   yandex_api_key: boolean
@@ -345,4 +364,10 @@ export const api = {
     address: string; etherscan_api_key: string; threshold: string; notify_user_id: number
   }>) => req<WalletStatus>('POST', '/wallet', b),
   refreshWallet: () => req<WalletStatus>('POST', '/wallet/refresh'),
+
+  investMarket: () => req<InvestMarket>('GET', '/invest/market'),
+  investWatchlist: () => req<{ tickers: string[] }>('GET', '/invest/watchlist'),
+  saveInvestWatchlist: (tickers: string[]) =>
+    req<{ tickers: string[] }>('PUT', '/invest/watchlist', { tickers }),
+  investOverview: () => req<InvestOverview>('GET', '/invest/overview'),
 }

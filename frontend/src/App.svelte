@@ -23,6 +23,7 @@
   import Transactions from './routes/Transactions.svelte'
   import Integrations from './routes/Integrations.svelte'
   import Wallet from './routes/Wallet.svelte'
+  import Invest from './routes/Invest.svelte'
   import Admin from './routes/Admin.svelte'
 
   let onboarded = $state<boolean | null>(null)
@@ -84,6 +85,7 @@
     categories: { title: 'Категории', sub: 'Названия, иконки и группы', period: false },
     integrations: { title: 'Интеграции', sub: 'Telegram-бот и AI', period: false },
     wallet: { title: 'Кошелёк USDC', sub: 'Баланс ERC-20 и уведомление о зарплате', period: false },
+    invest: { title: 'Инвестиции', sub: 'База знаний, рынок MOEX и AI-обзор — на бюджет не влияет', period: false },
     admin: { title: 'Админка', sub: 'Пространства, аккаунты и инвайты', period: false },
   }
   let head = $derived(TITLES[$route] ?? TITLES.dashboard)
@@ -163,6 +165,8 @@
         <Transactions />
       {:else if $route === 'wallet'}
         <Wallet />
+      {:else if $route === 'invest'}
+        <Invest />
       {:else if $route === 'integrations' && $me?.is_admin}
         <Integrations />
       {:else if $route === 'admin' && $me?.is_admin}

@@ -117,6 +117,7 @@
     { href: '#/categories', icon: 'ti-category', name: 'Категории', meta: 'Названия, иконки и группы' },
     { href: '#/deposit', icon: 'ti-building-bank', name: 'Калькулятор вклада', meta: 'Капитализация и ставки по годам' },
     { href: '#/wallet', icon: 'ti-currency-ethereum', name: 'Кошелёк USDC', meta: 'Баланс ERC-20 и уведомление о зарплате' },
+    { href: '#/invest', icon: 'ti-chart-line', name: 'Инвестиции', meta: 'База знаний, рынок MOEX и AI-обзор' },
     ...($me?.is_admin
       ? [
           { href: '#/integrations', icon: 'ti-robot', name: 'Телеграм-бот и AI', meta: 'Запись трат сообщением' },
