@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import ws_id
 from app.db import get_db
+from app.services import invest_overview
 from app.services.moex import MoexError, get_quotes
 from app.services.settings_store import get_setting, set_setting
 
@@ -51,6 +52,11 @@ def get_watchlist(db: Session = Depends(get_db), ws: int = Depends(ws_id)):
 def put_watchlist(body: WatchlistBody, db: Session = Depends(get_db), ws: int = Depends(ws_id)):
     set_setting(db, ws, "invest.watchlist", ",".join(body.tickers))
     return {"tickers": body.tickers}
+
+
+@router.get("/overview")
+def overview(db: Session = Depends(get_db), ws: int = Depends(ws_id)):
+    return invest_overview.get_or_build(db, ws)
 
 
 @router.get("/market")
