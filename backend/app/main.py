@@ -13,6 +13,7 @@ from app.api import (
     debts,
     deposit,
     funds,
+    invest,
     meta,
     plan,
     settings,
@@ -139,6 +140,7 @@ for router in (
     settings.router,
     telegram.router,
     wallet.router,
+    invest.router,
 ):
     app.include_router(router)
 
