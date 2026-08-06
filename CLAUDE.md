@@ -93,7 +93,12 @@ people by `tx_resolver.py`, written immediately; the confirmation reply shows wh
 each operation was attributed to (`AppUser.name`, e.g. «· Общий»). `/stats` returns
 an hour-cached digest (`services/daily_digest.py`) with a rotating AI/static tip —
 the AI tip runs at a higher temperature (0.9, vs 0.3 for parsing) across several
-modes/topics/styles for variety, and re-rolls every hour. Keys live in the
+modes/topics/styles for variety, and re-rolls every hour. Voice messages (≤29 s — sync
+SpeechKit STT caps at 30 s and TG rounds `voice.duration`) are downloaded via
+`tg_client.download_file`, transcribed by `services/ai/speechkit.py` (OGG/Opus
+natively, same `secret.yandex_api_key`/`secret.yandex_folder_id` as YandexGPT;
+the service account additionally needs the `ai.speechkit-stt.user` role), then
+flow into the same text-parsing pipeline. Keys live in the
 `Setting` table under `secret.*` (excluded from export, masked in GET), editable in
 the app's «Интеграции» screen. People link to Telegram via `AppUser.telegram_id`
 (also the access whitelist). Setup guide: `docs/telegram-bot-setup.md`.

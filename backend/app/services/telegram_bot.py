@@ -11,7 +11,8 @@ from app.services.ai.router import parse_with_fallback, provider_label
 from app.services.ai_trace import trace_block
 from app.services.daily_digest import get_or_build as build_digest
 from app.services.settings_store import get_secret, get_setting
-from app.services.tg_client import answer_callback_query, send_message
+from app.services.ai.speechkit import SttError, recognize_ogg
+from app.services.tg_client import TgError, answer_callback_query, download_file, send_message
 from app.services.tx_resolver import create_transactions
 
 log = logging.getLogger("telegram_bot")
@@ -21,7 +22,8 @@ _LAST_BATCH: dict[str, list[int]] = {}
 
 _HELP = (
     "Пришли трату свободным текстом, например:\n"
-    "<i>магазин 1560, кофе 360, интернет 1200</i>\n\n"
+    "<i>магазин 1560, кофе 360, интернет 1200</i>\n"
+    "Или голосовым сообщением — распознаю и запишу.\n\n"
     "Команды:\n"
     "/stats — статистика и совет дня\n"
     "/undo — отменить последнюю запись\n"
@@ -94,6 +96,10 @@ def handle_update(db: Session, update: dict) -> None:
         if text == "/undo":
             _handle_undo(db, token, chat_id, tg_id, sender.workspace_id)
             return
+        if not text and msg.get("voice"):
+            text = _transcribe_voice(db, token, chat_id, msg["voice"])
+            if text:
+                send_message(token, chat_id, f"🎙 Услышал: <i>{text}</i>")
         if not text:
             return
 
@@ -101,6 +107,36 @@ def handle_update(db: Session, update: dict) -> None:
         _handle_text(db, token, chat_id, tg_id, sender, text)
     except Exception:  # webhook must never raise
         log.exception("handle_update failed")
+
+
+# Sync STT caps audio at 30 s; TG rounds duration, so a 30.4 s note arrives
+# as 30 — keep one second of margin to never hit the API limit.
+_MAX_VOICE_SEC = 29
+
+
+def _transcribe_voice(db, token, chat_id, voice: dict) -> str:
+    if int(voice.get("duration") or 0) > _MAX_VOICE_SEC:
+        send_message(token, chat_id,
+                     "Голосовое слишком длинное — уложись в 30 секунд, пожалуйста.")
+        return ""
+    api_key = get_secret(db, "secret.yandex_api_key")
+    folder_id = get_secret(db, "secret.yandex_folder_id")
+    if not api_key or not folder_id:
+        send_message(token, chat_id,
+                     "Распознавание речи не настроено: нужны ключи Yandex Cloud "
+                     "(More → Интеграции) и роль SpeechKit у сервисного аккаунта.")
+        return ""
+    try:
+        audio = download_file(token, voice["file_id"])
+        text = recognize_ogg(api_key, folder_id, audio)
+    except (TgError, SttError) as e:
+        log.warning("voice transcription failed: %s", e)
+        send_message(token, chat_id, "Не получилось распознать голосовое 😔 Попробуй текстом.")
+        return ""
+    if not text:
+        send_message(token, chat_id, "Не расслышал — пусто или неразборчиво. Попробуй ещё раз.")
+        return ""
+    return text
 
 
 def _handle_text(db, token, chat_id, tg_id, sender, text) -> None:

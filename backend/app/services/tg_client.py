@@ -48,6 +48,21 @@ def answer_callback_query(token: str, callback_query_id: str, text: str = "") ->
         log.warning("answerCallbackQuery failed: %s", e)
 
 
+def download_file(token: str, file_id: str) -> bytes:
+    info = _call(token, "getFile", {"file_id": file_id})
+    path = info.get("file_path")
+    if not path:
+        raise TgError("getFile: no file_path in response")
+    url = f"{_API}/file/bot{token}/{path}"
+    try:
+        with _client_factory() as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            return resp.content
+    except httpx.HTTPError as e:
+        raise TgError(f"file download: {e}") from e
+
+
 def get_me(token: str) -> dict:
     return _call(token, "getMe", {})
 

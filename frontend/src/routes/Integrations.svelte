@@ -77,6 +77,11 @@
         <option value="gigachat">GigaChat</option>
       </select>
     </label>
+    <p class="hint">
+      Ключ Yandex используется и для распознавания голосовых сообщений боту
+      (SpeechKit, до 30 секунд). Сервисному аккаунту в Yandex Cloud нужна
+      дополнительная роль <code>ai.speechkit-stt.user</code>.
+    </p>
   </section>
 
   <div class="row">
