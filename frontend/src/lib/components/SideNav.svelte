@@ -101,7 +101,7 @@
     width: 100%; min-height: 44px; padding: 0 12px;
     border: none; border-radius: 11px; background: transparent;
     color: var(--text-secondary); font-size: 14px; font-weight: 500; text-align: left;
-    transition: background var(--transition-fast), color var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast), transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .nav-item:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
   .nav-item.active { background: rgba(106, 155, 255, 0.14); color: var(--blue); }

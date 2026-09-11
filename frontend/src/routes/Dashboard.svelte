@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SpringValue, SPRINGS, prefersReducedMotion } from '../lib/motion'
   import { api, type Category, type MonthSummary, type Transaction } from '../lib/api'
   import { period, dataVersion, showHelp, showToast, invalidate, navigate } from '../lib/stores'
   import { wallet, loadWalletOnce, loadWallet, refreshIfStale } from '../lib/wallet'
@@ -72,6 +73,16 @@
   // с рублёвого баланса на баланс кошелька (и обратно).
   loadWalletOnce()
   let flipped = $state(false)
+  // Flip angle driven by a slightly under-damped spring: a physical turn, so a
+  // touch of overshoot reads right. Re-targets from the current angle when tapped mid-turn.
+  let flipDeg = $state(0)
+  const flipReduced = prefersReducedMotion()
+  const flipSpring = new SpringValue(0, SPRINGS.rotation, (v) => (flipDeg = v))
+  $effect(() => {
+    const target = flipped ? 180 : 0
+    if (flipReduced) flipSpring.snap(target)
+    else flipSpring.setTarget(target)
+  })
   let walletBusy = $state(false)
   // Календарный месяц, а не просматриваемый: правило «одно письмо в месяц» живёт
   // по реальной дате, независимо от того, какой месяц открыт в шапке.
@@ -134,7 +145,7 @@
             aria-label={flipped ? 'Показать рублёвый баланс' : 'Показать баланс кошелька USDC'}
             onclick={toggleFlip}
           >
-            <span class="flip-inner">
+            <span class="flip-inner" style="transform: rotateX({flipDeg.toFixed(2)}deg)">
               <span class="face num hero-amount">
                 {money(summary.balance)} ₽<i class="ti ti-rotate-2 flip-hint"></i>
               </span>
@@ -434,7 +445,7 @@
   }
   .hero-top { display: flex; align-items: center; gap: var(--space-2); }
   .hero-top .section-label { margin-bottom: 0; }
-  .hero-amount { font-size: clamp(38px, 4.4vw, 52px); font-weight: 600; letter-spacing: -0.02em; margin: 8px 0 2px; }
+  .hero-amount { font-size: clamp(38px, 4.4vw, 52px); font-weight: 600; letter-spacing: -0.035em; line-height: 1.05; margin: 8px 0 2px; }
 
   /* Переворот главного числа: рубли на лицевой стороне, кошелёк USDC на обратной.
      Обе стороны лежат в одной grid-ячейке, поэтому высота карточки не прыгает. */
@@ -446,9 +457,8 @@
   .flip-inner {
     display: grid;
     transform-style: preserve-3d;
-    transition: transform 0.55s cubic-bezier(0.34, 1.1, 0.4, 1);
+    will-change: transform;
   }
-  .flip.flipped .flip-inner { transform: rotateX(180deg); }
   /* flex-wrap: длинный баланс (7 знаков + тикер) переносится, а не вылезает за карточку. */
   .face {
     grid-area: 1 / 1; backface-visibility: hidden;
@@ -467,9 +477,6 @@
   .hero-foot .wrefresh { border: none; min-height: 36px; padding: 0 14px; }
   .hero-foot .wrefresh:disabled { opacity: 0.6; }
 
-  @media (prefers-reduced-motion: reduce) {
-    .flip-inner { transition: none; }
-  }
 
   .formula { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); font-size: 12.5px; }
   .formula .f { padding: 6px 11px; border-radius: 10px; }
