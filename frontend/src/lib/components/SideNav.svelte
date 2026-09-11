@@ -7,10 +7,11 @@
     brandSub?: string
     /** Short summary shown at the bottom of the expanded sidebar. */
     freeAmount?: string
-    perDay?: string
+    /** Balance minus the usual spend still to come this month (empty without history). */
+    afterUsual?: string
     daysLeft?: number
   }
-  let { onadd, brandSub = '', freeAmount = '', perDay = '', daysLeft = 0 }: Props = $props()
+  let { onadd, brandSub = '', freeAmount = '', afterUsual = '', daysLeft = 0 }: Props = $props()
 
   const items = [
     { id: 'dashboard', label: 'Главная', icon: 'ti-home' },
@@ -56,7 +57,9 @@
     <div class="summary">
       <div class="section-label">Свободно · {daysLeft} дн.</div>
       <div class="num summary-amt">{freeAmount} ₽</div>
-      <div class="summary-sub">≈ {perDay} ₽ в день</div>
+      {#if afterUsual}
+        <div class="summary-sub">после обычных расходов ≈ {afterUsual} ₽</div>
+      {/if}
     </div>
   {/if}
 </aside>

@@ -152,6 +152,46 @@ export interface MonthSummary {
 }
 
 
+/** History-based month outlook — backend/app/services/outlook.py::MonthOutlook. */
+export interface CategoryOutlook {
+  category_id: number
+  name: string
+  group: 'needs' | 'wants'
+  spent: number
+  typical: number
+  remaining_typical: number
+  kind: 'regular' | 'variable' | 'new'
+  months_active: number
+}
+export interface OneOff {
+  id: number
+  date: string
+  amount: number
+  category_name: string | null
+  comment: string | null
+}
+export interface MonthOutlook {
+  year: number
+  month: number
+  day: number
+  days_in_month: number
+  days_left: number
+  history_months: number
+  spent: number
+  spent_savings: number
+  typical_total: number
+  expected_remaining: number
+  forecast_total: number
+  median_day: number
+  median_cheque: number
+  prev_month_total: number | null
+  prev_same_day: number | null
+  prev_cumulative: number[]
+  oneoffs: OneOff[]
+  oneoffs_total: number
+  categories: CategoryOutlook[]
+}
+
 export interface Deposit {
   rate: number
   start_date: string | null
@@ -347,6 +387,7 @@ export const api = {
 
   analytics: (year?: number, month?: number, period: 'month' | 'quarter' | 'year' = 'month') =>
     req<any>('GET', `/analytics${ym(year, month)}${ym(year, month) ? '&' : '?'}period=${period}`),
+  outlook: (year?: number, month?: number) => req<MonthOutlook>('GET', `/analytics/outlook${ym(year, month)}`),
 
   settings: () => req<Record<string, string>>('GET', '/settings'),
   saveSettings: (b: unknown) => req('POST', '/settings/general', b),

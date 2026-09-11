@@ -223,7 +223,6 @@ button:disabled { cursor: default; }
 .pbar-fill.yellow { background: linear-gradient(90deg, #d99a2e, #f2b84b); }
 .pbar-fill.red { background: linear-gradient(90deg, #d5474a, #f0686a); }
 .pbar-fill.blue { background: linear-gradient(90deg, #4f82ec, #6a9bff); }
-.pbar-pace { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 2px; background: var(--text-primary); opacity: 0.5; }
 
 /* Chips */
 .chip {

@@ -4,7 +4,7 @@
  * (`/api/transactions` for the month + `/api/dashboard`), so no backend
  * changes are required to ship the richer statistics screen. */
 
-import type { Transaction } from './api'
+import type { MonthOutlook, Transaction } from './api'
 
 export interface MonthPace {
   day: number
@@ -72,21 +72,20 @@ export interface RecurringSplit {
   recurringNames: string[]
 }
 
-/** A category counts as "recurring" when it produced a charge in each of the
- *  last `minMonths` months — those are the payments that will arrive again
- *  regardless of behaviour. Everything else is what you can actually steer. */
+/** "Regular" categories (per the outlook: present every past month with a
+ *  stable amount) are the payments that will arrive again regardless of
+ *  behaviour. Everything else is what you can actually steer. */
 export function recurringSplit(
   monthTxs: Transaction[],
-  historyByCategory: Record<number, number>,
-  minMonths = 3,
+  kindByCategory: Record<number, string>,
 ): RecurringSplit {
   let recurring = 0
   let variable = 0
   const names = new Set<string>()
   for (const t of monthTxs) {
     if (t.type !== 'expense') continue
-    const months = t.category_id ? (historyByCategory[t.category_id] ?? 0) : 0
-    if (months >= minMonths) {
+    const kind = t.category_id ? kindByCategory[t.category_id] : undefined
+    if (kind === 'regular') {
       recurring += t.amount
       if (t.category_name) names.add(t.category_name)
     } else {
@@ -106,11 +105,14 @@ export interface Insight {
 export interface InsightInput {
   categories: { name: string; spent: number; limit: number; avg3: number }[]
   txs: Transaction[]
-  pace: MonthPace
+  outlook: MonthOutlook | null
+  /** Sum of this month's category limits (or the income-based fallback). */
+  planLimit: number
 }
 
 /** Automatic observations, ordered by how much money is at stake. */
-export function buildInsights({ categories, txs, pace }: InsightInput): Insight[] {
+export function buildInsights({ categories, txs, outlook, planLimit }: InsightInput): Insight[] {
+  const daysLeft = outlook?.days_left ?? 0
   const out: Insight[] = []
   const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU').replace(/\u00a0/g, ' ')
 
@@ -123,7 +125,7 @@ export function buildInsights({ categories, txs, pace }: InsightInput): Insight[
         text: `Потрачено ${fmt(c.spent)} ₽ при лимите ${fmt(c.limit)} ₽.` +
           (c.avg3 > 0 ? ` Это ${Math.round(((c.spent - c.avg3) / c.avg3) * 100)}% к среднему за 3 месяца.` : ''),
       })
-    } else if (c.limit > 0 && c.avg3 > 0 && c.spent < c.avg3 * 0.85 && pace.daysLeft <= 10) {
+    } else if (c.limit > 0 && c.avg3 > 0 && c.spent < c.avg3 * 0.85 && daysLeft > 0 && daysLeft <= 10) {
       out.push({
         tone: 'green',
         icon: 'ti-confetti',
@@ -133,22 +135,34 @@ export function buildInsights({ categories, txs, pace }: InsightInput): Insight[
     }
   }
 
-  // Unusually large single charges: 2.5× the median expense of the month.
-  const amounts = txs.filter((t) => t.type === 'expense').map((t) => t.amount).sort((a, b) => a - b)
-  if (amounts.length > 6) {
-    const median = amounts[Math.floor(amounts.length / 2)]
-    const spikes = txs
-      .filter((t) => t.type === 'expense' && t.amount > median * 2.5)
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 2)
-    for (const s of spikes) {
+  // Unusually large one-off charges. The outlook already excludes regular
+  // categories (rent, taxes, instalments) so a big but expected bill is not a spike.
+  if (outlook && outlook.history_months > 0) {
+    for (const s of outlook.oneoffs.slice(0, 2)) {
       out.push({
         tone: 'blue',
         icon: 'ti-flame',
-        title: `Крупная трата: ${s.category_name ?? 'без категории'} ${fmt(s.amount)} ₽`,
-        text: `В ${(s.amount / median).toFixed(1)} раза выше вашего обычного чека.` +
+        title: `Разовая трата: ${s.category_name ?? 'без категории'} ${fmt(s.amount)} ₽`,
+        text: (outlook.median_cheque > 0 ? `В ${(s.amount / outlook.median_cheque).toFixed(1)} раза выше вашего обычного чека.` : '') +
           (s.comment ? ` ${s.comment}` : ''),
       })
+    }
+  } else {
+    const amounts = txs.filter((t) => t.type === 'expense').map((t) => t.amount).sort((a, b) => a - b)
+    if (amounts.length > 6) {
+      const median = amounts[Math.floor(amounts.length / 2)]
+      const spikes = txs
+        .filter((t) => t.type === 'expense' && t.amount > median * 2.5)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 2)
+      for (const s of spikes) {
+        out.push({
+          tone: 'blue',
+          icon: 'ti-flame',
+          title: `Крупная трата: ${s.category_name ?? 'без категории'} ${fmt(s.amount)} ₽`,
+          text: `В ${(s.amount / median).toFixed(1)} раза выше вашего обычного чека.` + (s.comment ? ` ${s.comment}` : ''),
+        })
+      }
     }
   }
 
@@ -162,13 +176,29 @@ export function buildInsights({ categories, txs, pace }: InsightInput): Insight[
     })
   }
 
-  if (pace.overBy > 0) {
-    out.unshift({
-      tone: 'red',
-      icon: 'ti-trending-up',
-      title: `Темп выше плана: +${fmt(pace.overBy)} ₽ к концу месяца`,
-      text: `Сейчас уходит ${fmt(pace.perDaySoFar)} ₽ в день. Чтобы уложиться — не больше ${fmt(pace.perDayToFit)} ₽ в день.`,
-    })
+  // Forecast vs plan — from the family's own typical months, not a per-day pace.
+  if (outlook && outlook.history_months > 0 && outlook.days_left > 0 && planLimit > 0) {
+    const over = outlook.forecast_total - planLimit
+    if (over > planLimit * 0.03) {
+      out.unshift({
+        tone: 'red',
+        icon: 'ti-trending-up',
+        title: `По обычным месяцам выйдет ≈ ${fmt(outlook.forecast_total)} ₽ — на ${fmt(over)} ₽ больше плана`,
+        text: `Уже потрачено ${fmt(outlook.spent)} ₽, и обычно за оставшиеся дни уходит ещё ≈ ${fmt(outlook.expected_remaining)} ₽.`,
+      })
+    }
+  }
+  // Same day last month — rent and instalments are in both, so this is a fair comparison.
+  if (outlook && outlook.prev_same_day && outlook.prev_same_day > 0 && outlook.day > 3) {
+    const delta = ((outlook.spent - outlook.prev_same_day) / outlook.prev_same_day) * 100
+    if (Math.abs(delta) >= 15) {
+      out.push({
+        tone: delta > 0 ? 'yellow' : 'green',
+        icon: delta > 0 ? 'ti-arrow-up-right' : 'ti-arrow-down-right',
+        title: `К ${outlook.day}-му: ${delta > 0 ? '+' : '−'}${Math.abs(Math.round(delta))}% к прошлому месяцу`,
+        text: `Сейчас ${fmt(outlook.spent)} ₽ против ${fmt(outlook.prev_same_day)} ₽ на ту же дату.`,
+      })
+    }
   }
 
   return out.slice(0, 5)

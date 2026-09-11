@@ -30,6 +30,7 @@
   let bootError = $state<string | null>(null)
   // Kept in sync for the sidebar summary block.
   let summary = $state<any>(null)
+  let outlook = $state<any>(null)
   // Real family members shown as the sidebar subtitle.
   let usersLabel = $state('')
 
@@ -62,6 +63,7 @@
     if (!onboarded) return
     const { year, month } = $period
     api.dashboard(year, month).then((s) => (summary = s)).catch(() => {})
+    api.outlook(year, month).then((o) => (outlook = o)).catch(() => (outlook = null))
   })
 
   $effect(() => {
@@ -137,7 +139,7 @@
       onadd={openAdd}
       brandSub={usersLabel}
       freeAmount={summary ? money(summary.balance) : ''}
-      perDay={summary && daysLeft > 0 ? money(summary.balance / daysLeft) : '0'}
+      afterUsual={summary && outlook?.history_months ? money(summary.balance - outlook.expected_remaining) : ''}
       {daysLeft}
     />
 

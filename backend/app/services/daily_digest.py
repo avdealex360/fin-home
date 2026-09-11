@@ -97,11 +97,19 @@ def _collect_stats(db: Session, ws_id: int, today: date) -> dict:
     ):
         by_group[cat] = amount or Decimal("0")
 
+    from app.services.outlook import OutlookService
+
+    outlook = OutlookService.month_outlook(db, ws_id, year, month, today=today)
     return {
         "total": total,
         "top_category": top_cat[0] if top_cat else None,
         "top_amount": top_cat[1] if top_cat else Decimal("0"),
         "by_group": by_group,
+        # History-based outlook (None until there is at least one past month).
+        "expected_remaining": outlook.expected_remaining if outlook.history_months else None,
+        "forecast_total": outlook.forecast_total if outlook.history_months else None,
+        "prev_same_day": outlook.prev_same_day,
+        "spent_now": outlook.spent,
     }
 
 
@@ -112,6 +120,17 @@ def _stats_text(stats: dict) -> str:
     for g, label in _GROUP_LABELS.items():
         if g in stats["by_group"]:
             lines.append(f"{label}: {_fmt(stats['by_group'][g])} ₽")
+    if stats.get("expected_remaining") is not None:
+        lines.append(
+            f"Обычных расходов ещё впереди ≈ {_fmt(stats['expected_remaining'])} ₽, "
+            f"итог месяца ≈ {_fmt(stats['forecast_total'])} ₽"
+        )
+    prev = stats.get("prev_same_day")
+    if prev:
+        now = stats.get("spent_now", Decimal("0"))
+        delta = (now - prev) / prev * 100
+        sign = "+" if delta >= 0 else "−"
+        lines.append(f"К этому дню прошлого месяца: {sign}{abs(delta):.0f}%")
     return "\n".join(lines)
 
 

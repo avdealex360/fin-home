@@ -131,6 +131,22 @@ overview via `ai/router.complete_with_fallback` at most once per workspace per
 calendar day (Setting `invest.overview{,_date}`), appending the «не ИИР» disclaimer
 server-side. No ledger effect, no migrations, no portfolio tracking (deliberately).
 
+## Month outlook (history-based forecast)
+
+`services/outlook.py` + `GET /api/analytics/outlook` replace every "spent / day × days"
+pace metric (they lied: rent lands on one day, a vet surgery is not going to repeat).
+Per category, `typical` = median monthly spend over the last ≤3 months with data
+(`regular` kind) or the floor across those months (`variable`: lumpy/intermittent);
+`expected_remaining` = Σ max(0, typical − spent) over needs/wants — money that will
+most likely still leave this month. Also: robust `median_day`, previous month's
+cumulative curve + same-day comparison, one-off spikes (big cheques outside regular
+categories). Savings-group spend is reported separately and never inflates the forecast.
+Consumers: Dashboard hero («Обычных расходов впереди» / «Останется после них»),
+sidebar summary, Analytics («Обычный день», forecast card with last month's curve,
+insights, regular/variable split), Telegram `/stats`. With zero history the UI falls
+back to balance / days left and says the forecast appears after the first full month.
+No per-day pace or linear "where you should be today" markers remain — do not add them back.
+
 ## Deployment
 
 GitHub Actions → VPS on `git push origin main`; VPS runs `scripts/deploy.sh` (git pull + `make prod-rebuild` + `make prod-migrate`). Caddy serves HTTPS (self-signed cert via `scripts/gen-certs.sh`) and proxies to the app, which enforces its own login/session auth.

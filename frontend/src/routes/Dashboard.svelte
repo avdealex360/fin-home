@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SpringValue, SPRINGS, prefersReducedMotion } from '../lib/motion'
-  import { api, type Category, type MonthSummary, type Transaction } from '../lib/api'
+  import { api, type Category, type MonthSummary, type MonthOutlook, type Transaction } from '../lib/api'
   import { period, dataVersion, showHelp, showToast, invalidate, navigate } from '../lib/stores'
   import { wallet, loadWalletOnce, loadWallet, refreshIfStale } from '../lib/wallet'
   import { money, monthName, formatDate, usdcRound, usdcParts, timeOnly } from '../lib/format'
@@ -14,6 +14,7 @@
   let recent = $state<Transaction[]>([])
   let plan = $state<any>(null)
   let categories = $state<Category[]>([])
+  let outlook = $state<MonthOutlook | null>(null)
 
   $effect(() => {
     const { year, month } = $period
@@ -22,16 +23,18 @@
   })
 
   async function load(year: number, month: number) {
-    const [s, r, p, c] = await Promise.all([
+    const [s, r, p, c, o] = await Promise.all([
       api.dashboard(year, month),
       api.transactions(8, year, month),
       api.plan(year, month),
       api.categories(undefined, true),
+      api.outlook(year, month).catch(() => null),
     ])
     summary = s
     recent = r
     plan = p
     categories = c
+    outlook = o
   }
 
   let pace = $derived(
@@ -43,9 +46,22 @@
   // "Свободно" is the one number the whole screen is built around:
   // income that actually arrived − spent − what was moved to savings.
   let saved = $derived(summary?.groups.find((g) => g.name === 'savings')?.spent ?? 0)
-  let perDay = $derived(pace && pace.daysLeft > 0 ? (summary?.balance ?? 0) / pace.daysLeft : 0)
-  let paceDelta = $derived(
-    pace && perDay > 0 ? Math.round(((pace.perDaySoFar - perDay) / perDay) * 100) : 0,
+  // History-based outlook (see backend/app/services/outlook.py). Until the
+  // first full month of data exists there is nothing to project from, so the
+  // hero falls back to the plain "balance / days left".
+  let hasOutlook = $derived(Boolean(outlook && outlook.history_months > 0))
+  let afterUsual = $derived((summary?.balance ?? 0) - (hasOutlook ? outlook!.expected_remaining : 0))
+  let perDay = $derived(pace && pace.daysLeft > 0 ? Math.max(afterUsual, 0) / pace.daysLeft : 0)
+  let vsPrev = $derived.by(() => {
+    if (!outlook || !outlook.prev_same_day || outlook.day < 3) return null
+    return Math.round(((outlook.spent - outlook.prev_same_day) / outlook.prev_same_day) * 100)
+  })
+  // Top three regular categories still to be paid — what «обычные расходы» means today.
+  let usualTop = $derived(
+    (outlook?.categories ?? [])
+      .filter((c) => c.remaining_typical > 0)
+      .sort((a, b) => b.remaining_typical - a.remaining_typical)
+      .slice(0, 3),
   )
 
   let catRows = $derived.by(() => {
@@ -166,7 +182,10 @@
               влияет: когда зарплата придёт — запишите её обычной операцией «Доход».
             {:else}
               Сквозной баланс: остаток прошлых месяцев плюс доход этого месяца, минус траты
-              и отложенное. Начальный остаток задаётся в «Ещё» → «Начальный остаток».
+              и отложенное. «Обычные расходы впереди» — то, что в ваши прошлые месяцы обычно
+              уходило по каждой категории и в этом месяце ещё не потрачено: неоплаченная
+              аренда, продукты на остаток месяца и т.п. Разовые крупные покупки сюда не
+              проецируются.
             {/if}
           </p>
         {/if}
@@ -215,18 +234,33 @@
           </div>
 
           <div class="hero-foot">
-            <div>
-              <div class="k">Можно тратить в день</div>
-              <div class="num v green">{money(perDay)} ₽</div>
-            </div>
-            <div>
-              <div class="k">Тратите сейчас в день</div>
-              <div class="num v yellow">{money(pace.perDaySoFar)} ₽</div>
-            </div>
-            {#if paceDelta > 3}
-              <span class="chip yellow"><i class="ti ti-trending-up"></i>Темп выше плана на {paceDelta}%</span>
+            {#if hasOutlook && outlook}
+              <div>
+                <div class="k">Обычных расходов впереди</div>
+                <div class="num v yellow">{money(outlook.expected_remaining)} ₽</div>
+                {#if usualTop.length}
+                  <div class="k usual">{usualTop.map((c) => `${c.name} ${money(c.remaining_typical)}`).join(' · ')}</div>
+                {/if}
+              </div>
+              <div>
+                <div class="k">Останется после них</div>
+                <div class="num v {afterUsual >= 0 ? 'green' : 'red'}">{afterUsual < 0 ? '−' : ''}{money(Math.abs(afterUsual))} ₽</div>
+                {#if pace.daysLeft > 0}
+                  <div class="k usual">≈ {money(perDay)} ₽ в день сверх обычного</div>
+                {/if}
+              </div>
+              {#if vsPrev !== null}
+                <span class="chip {vsPrev > 5 ? 'yellow' : 'green'}" title="Траты к этому дню против прошлого месяца">
+                  <i class="ti {vsPrev > 5 ? 'ti-arrow-up-right' : 'ti-arrow-down-right'}"></i>
+                  {vsPrev > 0 ? '+' : vsPrev < 0 ? '−' : ''}{Math.abs(vsPrev)}% к прошлому месяцу на {outlook.day}-е
+                </span>
+              {/if}
             {:else}
-              <span class="chip green"><i class="ti ti-check"></i>Идёте в графике</span>
+              <div>
+                <div class="k">Свободно в день</div>
+                <div class="num v green">{money(perDay)} ₽</div>
+              </div>
+              <span class="chip blue"><i class="ti ti-hourglass"></i>Прогноз появится после первого полного месяца</span>
             {/if}
           </div>
         {/if}
@@ -246,7 +280,11 @@
         <div class="card tile">
           <div class="row"><span class="k">Потрачено</span><i class="ti ti-arrow-up-right red"></i></div>
           <div class="num v red">{money(summary.total_spent)} ₽</div>
-          <div class="k">прогноз к концу месяца {money(pace.projected)} ₽</div>
+          {#if hasOutlook && outlook && pace.daysLeft > 0}
+            <div class="k">итог месяца ≈ {money(outlook.forecast_total + outlook.spent_savings)} ₽ по обычным месяцам</div>
+          {:else if outlook?.prev_month_total}
+            <div class="k">в прошлом месяце {money(outlook.prev_month_total)} ₽ без накоплений</div>
+          {/if}
           {#if $showHelp}<div class="hint">Сумма расходных операций с 1-го числа, включая обязательные платежи.</div>{/if}
         </div>
 
@@ -276,7 +314,6 @@
         {#if $showHelp}
           <p class="explain">
             Половина дохода — на обязательное, треть — на желания, пятая часть — в накопления.
-            Светлая риска на шкале показывает, где вы должны быть по календарю на сегодня.
           </p>
         {/if}
         <div class="stack meters">
@@ -286,7 +323,7 @@
                 <span class="mname">{g.label} <span class="dim small">цель {g.percent}%</span></span>
                 <span class="num small muted">{money(g.spent)} / {money(g.limit)} ₽</span>
               </div>
-              <ProgressBar spent={g.spent} limit={g.limit} color={g.color} showPace={true} />
+              <ProgressBar spent={g.spent} limit={g.limit} color={g.color} />
               <div class="small" style="color: var(--{g.color}); margin-top: 6px">
                 {#if g.name === 'savings'}
                   {g.remaining > 0 ? `Не хватает ${money(g.remaining)} ₽ до цели месяца` : 'Цель месяца выполнена'}
@@ -496,7 +533,8 @@
     margin-top: auto; padding-top: var(--space-4);
     border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
-  .hero-foot > div { flex: 1 1 140px; }
+  .hero-foot > div { flex: 1 1 140px; min-width: 0; }
+  .hero-foot .usual { margin-top: 3px; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .k { font-size: 11.5px; color: var(--text-secondary); }
   .v { font-size: 19px; font-weight: 600; margin-top: 2px; }

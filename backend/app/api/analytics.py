@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ws_id, ym_params
 from app.db import get_db
 from app.services.analytics import AnalyticsService
+from app.services.outlook import OutlookService
 from app.services.pair_analytics import PairAnalyticsService
 from app.util import period_date_range
 
@@ -38,3 +39,15 @@ def analytics(
         "monthly_trends": AnalyticsService.monthly_trends(db, ws, 12, anchor=(year, month)),
         "pair": PairAnalyticsService.monthly_breakdown(db, ws, start, end),
     }
+
+
+@router.get("/outlook")
+def outlook(
+    ym: tuple[int, int] = Depends(ym_params),
+    db: Session = Depends(get_db),
+    ws: int = Depends(ws_id),
+):
+    """History-based month outlook: typical spend per category, what is still
+    likely to come, robust daily median, previous month's curve, one-offs."""
+    year, month = ym
+    return OutlookService.month_outlook(db, ws, year, month)

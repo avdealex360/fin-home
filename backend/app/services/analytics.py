@@ -88,6 +88,21 @@ class AnalyticsService:
             .all()
         )
         hist_by_cat = {cat_id: (int(months), Decimal(total)) for cat_id, months, total in history}
+        # Months in the window that carry any expense at all — a family that
+        # started tracking two months ago must not see its averages diluted by
+        # an empty third month.
+        hist_months = (
+            db.query(func.count(func.distinct(
+                extract("year", Transaction.date) * 12 + extract("month", Transaction.date)
+            )))
+            .filter(
+                Transaction.workspace_id == ws_id,
+                Transaction.type == "expense",
+                Transaction.date.between(hist_start, hist_end),
+            )
+            .scalar()
+        ) or 0
+        avg_divisor = Decimal(max(int(hist_months), 1))
 
         results = []
         for cat in categories:
@@ -112,7 +127,7 @@ class AnalyticsService:
                     diff=diff,
                     diff_percent=diff_pct,
                     months_active=months_active,
-                    avg3=(hist_total / 3).quantize(Decimal("0.01")),
+                    avg3=(hist_total / avg_divisor).quantize(Decimal("0.01")),
                 )
             )
         return results

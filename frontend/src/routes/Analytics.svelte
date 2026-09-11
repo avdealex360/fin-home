@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Transaction } from '../lib/api'
+  import { api, type MonthOutlook, type Transaction } from '../lib/api'
   import { period, dataVersion, showHelp } from '../lib/stores'
   import { money, monthName } from '../lib/format'
   import { monthPace, dailySpend, cumulative, firstWeekday, recurringSplit, buildInsights } from '../lib/insights'
@@ -17,6 +17,7 @@
   let monthTxs = $state<Transaction[]>([])
   let summary = $state<any>(null)
   let plan = $state<any>(null)
+  let outlook = $state<MonthOutlook | null>(null)
   let periodType = $state<'month' | 'quarter' | 'year'>('month')
 
   $effect(() => {
@@ -28,16 +29,18 @@
   })
 
   async function load(year: number, month: number, p: typeof periodType) {
-    const [a, txs, s, pl] = await Promise.all([
+    const [a, txs, s, pl, o] = await Promise.all([
       api.analytics(year, month, p),
       api.transactionsList({ year, month, limit: 500 }),
       api.dashboard(year, month),
       api.plan(year, month),
+      api.outlook(year, month).catch(() => null),
     ])
     data = a
     monthTxs = txs.items
     summary = s
     plan = pl
+    outlook = o
   }
 
   // ─── Pace & forecast ────────────────────────────────────────────────
@@ -52,6 +55,15 @@
   )
   let daily = $derived(pace ? dailySpend(monthTxs, pace.daysInMonth) : [])
   let cumDaily = $derived(pace ? cumulative(daily, pace.day) : [])
+  // Outlook is history-based; without a past month there is nothing to project.
+  let hasOutlook = $derived(Boolean(outlook && outlook.history_months > 0))
+  // The chart tracks all expenses (incl. savings transfers) like the plan does,
+  // so the forecast line adds this month's savings back on top of the spend forecast.
+  let forecastTotal = $derived(hasOutlook && outlook && pace && pace.daysLeft > 0 ? outlook.forecast_total + outlook.spent_savings : null)
+  let vsPrev = $derived.by(() => {
+    if (!outlook || !outlook.prev_same_day || outlook.day < 3) return null
+    return Math.round(((outlook.spent - outlook.prev_same_day) / outlook.prev_same_day) * 100)
+  })
 
   // ─── Trends ─────────────────────────────────────────────────────────
   let trends = $derived(data?.monthly_trends ?? [])
@@ -75,10 +87,11 @@
         hint: 'Сумма всех расходных операций за период.',
       },
       {
-        label: 'Средний день', value: `${money(pace.perDaySoFar)} ₽`, color: 'var(--yellow)',
-        spark: null, delta: `прогноз ${money(pace.projected)} ₽`,
-        deltaColor: 'var(--text-secondary)', note: 'к концу месяца',
-        hint: 'Расходы, поделённые на прошедшие дни месяца.',
+        label: 'Обычный день', value: `${money(outlook?.median_day ?? 0)} ₽`, color: 'var(--yellow)',
+        spark: null,
+        delta: forecastTotal !== null ? `итог ≈ ${money(forecastTotal)} ₽` : (outlook?.oneoffs_total ? `разовых ${money(outlook.oneoffs_total)} ₽` : ''),
+        deltaColor: 'var(--text-secondary)', note: forecastTotal !== null ? 'по обычным месяцам' : '',
+        hint: 'Медиана трат за день: аренда и крупные разовые покупки её не сдвигают, в отличие от среднего.',
       },
       {
         label: 'Норма сбережений', value: `${summary.savings_rate.toFixed(1)}%`, color: 'var(--blue)',
@@ -110,19 +123,17 @@
     })),
   )
 
-  // Months in which each category had a charge → recurring vs variable.
-  let monthsByCategory = $derived.by(() => {
-    const out: Record<number, number> = {}
-    for (const c of data?.plan_vs_fact ?? []) {
-      if (c.category_id && c.months_active) out[c.category_id] = c.months_active
-    }
-    // Fallback: treat a category as recurring when it is in the plan with a limit.
-    if (!Object.keys(out).length && plan?.limits) {
-      for (const l of plan.limits) if (l.limit_amount > 0) out[l.category_id] = 3
+  // Regular vs variable per the outlook (present every past month, stable amount).
+  // Fallback without history: a category with a limit in the plan counts as regular.
+  let kindByCategory = $derived.by(() => {
+    const out: Record<number, string> = {}
+    for (const c of outlook?.categories ?? []) out[c.category_id] = c.kind
+    if (!hasOutlook && plan?.limits) {
+      for (const l of plan.limits) if (l.limit_amount > 0) out[l.category_id] = 'regular'
     }
     return out
   })
-  let split = $derived(recurringSplit(monthTxs, monthsByCategory))
+  let split = $derived(recurringSplit(monthTxs, kindByCategory))
   let splitTotal = $derived(split.recurring + split.variable || 1)
 
   let insights = $derived.by(() => {
@@ -131,7 +142,7 @@
       const pf = (data?.plan_vs_fact ?? []).find((c: any) => c.category_name === t.name)
       return { name: t.name, spent: t.amount, limit: pf?.plan ?? 0, avg3: pf?.avg3 ?? 0 }
     })
-    return buildInsights({ categories: cats, txs: monthTxs, pace })
+    return buildInsights({ categories: cats, txs: monthTxs, outlook, planLimit })
   })
 
   let pvf = $derived(
@@ -197,14 +208,16 @@
         <h2 class="card-title">Прогноз до конца месяца</h2>
         {#if $showHelp}
           <p class="explain">
-            Сплошная линия — сколько уже потрачено нарастающим итогом. Пунктир — куда придёте
-            к концу месяца, если продолжите в том же темпе.
+            Сплошная линия — потрачено нарастающим итогом. Серая — как шёл прошлый месяц.
+            Пунктир — итог по вашим обычным месяцам: что по каждой категории обычно ещё
+            уходит в оставшиеся дни. Темп «в день» здесь не используется.
           </p>
         {/if}
         <ForecastChart
           cumulative={cumDaily}
+          prev={outlook?.prev_cumulative ?? []}
           {planLimit}
-          projected={pace.projected}
+          {forecastTotal}
           daysInMonth={pace.daysInMonth}
         />
         <div class="axis">
@@ -212,14 +225,35 @@
           <span>сегодня, {pace.day}-е</span>
           <span>{pace.daysInMonth}-е</span>
         </div>
-        {#if pace.overBy > 0}
-          <div class="callout red">
-            При текущем темпе выйдете за план на <span class="num">{money(pace.overBy)} ₽</span>.
-            Чтобы уложиться — не больше {money(pace.perDayToFit)} ₽ в день.
+        {#if forecastTotal !== null && outlook}
+          {@const over = forecastTotal - planLimit}
+          <div class="callout {over > 0 ? 'red' : 'green'}">
+            По обычным месяцам итог ≈ <span class="num">{money(forecastTotal)} ₽</span>:
+            {#if over > 0}
+              на {money(over)} ₽ больше плана. Ещё обычно уходит ≈ {money(outlook.expected_remaining)} ₽.
+            {:else}
+              в рамках плана, запас {money(-over)} ₽.
+            {/if}
+          </div>
+          {#if vsPrev !== null && outlook.prev_same_day}
+            <p class="dim tiny" style="margin: 8px 0 0">
+              К {outlook.day}-му: {money(outlook.spent)} ₽ против {money(outlook.prev_same_day)} ₽ в прошлом месяце
+              ({vsPrev > 0 ? '+' : ''}{vsPrev}%).
+            </p>
+          {/if}
+          {#if outlook.oneoffs.length}
+            <p class="dim tiny" style="margin: 6px 0 0">
+              Крупные разовые: {outlook.oneoffs.map((o) => `${o.category_name ?? 'без категории'} ${money(o.amount)}`).join(', ')} — всего {money(outlook.oneoffs_total)} ₽.
+            </p>
+          {/if}
+        {:else if pace.daysLeft === 0}
+          <div class="callout {summary.total_spent > planLimit ? 'red' : 'green'}">
+            Месяц закрыт: {money(summary.total_spent)} ₽ при плане {money(planLimit)} ₽.
           </div>
         {:else}
-          <div class="callout green">
-            Идёте в рамках плана. Запас — <span class="num">{money(planLimit - pace.projected)} ₽</span>.
+          <div class="callout blue">
+            Прогноз появится после первого полного месяца учёта — считать его по «темпу в день» нечестно:
+            аренда и разовые покупки ломают такую оценку.
           </div>
         {/if}
         {#if !hasPlanLimits}
@@ -406,6 +440,7 @@
   .callout { margin-top: var(--space-3); padding: 12px 13px; border-radius: var(--radius-md); font-size: 12.5px; line-height: 1.5; }
   .callout.red { background: var(--red-bg); color: var(--red); }
   .callout.green { background: var(--green-bg); color: var(--green); }
+  .callout.blue { background: rgba(106, 155, 255, 0.1); color: var(--blue); }
 
   .structure { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: center; margin-top: var(--space-3); }
   .legend { flex: 1 1 200px; min-width: 190px; display: flex; flex-direction: column; gap: 9px; }
