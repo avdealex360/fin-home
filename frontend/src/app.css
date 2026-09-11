@@ -66,8 +66,11 @@
   --side-w: 246px;
   --rail-w: 76px;
   --header-h: 68px;
-  --transition-fast: 120ms ease;
-  --transition-base: 200ms ease;
+  /* Motion: ease-out for anything that responds to input; springs live in lib/motion.ts. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-fast: 120ms var(--ease-out);
+  --transition-base: 200ms var(--ease-out);
+  --press-scale: 0.96;
 
   /* Mobile: content is the full column. */
   --shell-w: 100%;
@@ -95,10 +98,30 @@ body {
 }
 
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
-button { font-family: inherit; color: inherit; cursor: pointer; }
-a { color: var(--blue); text-decoration: none; }
+/* Tracking is size-specific: tighter as type grows, looser as it shrinks. */
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { letter-spacing: -0.022em; line-height: 1.15; }
+h2 { letter-spacing: -0.015em; line-height: 1.2; }
+h3 { letter-spacing: -0.01em; line-height: 1.25; }
+small, .explain, .dim { letter-spacing: 0.005em; }
+a { color: var(--blue); text-decoration: none; transition: color var(--transition-fast); }
 a:hover { color: #8fb4ff; }
+
+/* ─── Press feedback ─────────────────────────────────────────
+   Every tappable thing responds on pointer-down, not on release: a quick dip
+   (80ms) and a slower ease-out back. Components that need a different press
+   (nav icons, list rows) override transform on :active. */
+button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 220ms var(--ease-out);
+}
+button:not(:disabled):active {
+  transform: scale(var(--press-scale));
+  transition-duration: 80ms;
+}
+button:disabled { cursor: default; }
 
 /* ─── App layout ─────────────────────────────────────────────
    Mobile: single column + bottom nav.
@@ -167,9 +190,10 @@ a:hover { color: #8fb4ff; }
   font-weight: 600;
   width: 100%;
   min-height: 44px;
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  transition: opacity var(--transition-fast), transform 220ms var(--ease-out), background var(--transition-fast);
 }
-.btn:active { transform: translateY(1px); }
+.btn:not(:disabled):active { transform: scale(0.97); transition-duration: 80ms; }
+.btn:disabled { opacity: 0.6; }
 .btn-primary { background: var(--blue); color: #0b1220; box-shadow: var(--shadow-fab); }
 .btn-secondary { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--line); }
 .btn-ghost { background: transparent; color: var(--text-secondary); font-weight: 500; }
@@ -186,13 +210,15 @@ a:hover { color: #8fb4ff; }
   font-size: var(--text-base);
   font-family: inherit;
 }
+.input { transition: border-color var(--transition-fast), background var(--transition-fast); }
 .input:focus { outline: none; border-color: var(--blue-border); }
 .field { display: flex; flex-direction: column; gap: var(--space-2); }
 .field label { font-size: var(--text-sm); color: var(--text-secondary); }
 
 /* Progress bar */
 .pbar { position: relative; height: 9px; background: var(--bg-elevated); border-radius: 999px; }
-.pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; transition: width var(--transition-base); }
+/* Width is driven by a spring in ProgressBar.svelte; no CSS transition on top of it. */
+.pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
 .pbar-fill.green { background: linear-gradient(90deg, #2fae76, #3ecf8e); }
 .pbar-fill.yellow { background: linear-gradient(90deg, #d99a2e, #f2b84b); }
 .pbar-fill.red { background: linear-gradient(90deg, #d5474a, #f0686a); }
@@ -203,8 +229,9 @@ a:hover { color: #8fb4ff; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 11px; border-radius: 999px;
-  font-size: var(--text-xs); font-weight: 600;
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.01em;
   background: var(--bg-elevated); color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast), transform 220ms var(--ease-out);
 }
 .chip.green { background: var(--green-bg); color: var(--green); }
 .chip.yellow { background: var(--yellow-bg); color: var(--yellow); }
@@ -217,3 +244,20 @@ a:hover { color: #8fb4ff; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .stack { display: flex; flex-direction: column; gap: var(--space-3); }
 .spinner-wrap { display: flex; justify-content: center; padding: var(--space-10); color: var(--text-muted); }
+
+/* ─── Accessibility preferences ──────────────────────────────
+   Reduced motion means gentler feedback, not none: transitions collapse to a
+   near-instant change, springs in lib/motion.ts switch to short cross-fades. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  button:not(:disabled):active, .btn:not(:disabled):active { transform: none; opacity: 0.7; }
+}
+@media (prefers-contrast: more) {
+  :root { --line: rgba(255, 255, 255, 0.18); --text-muted: #8a93a8; }
+  .card { border-color: var(--line); }
+}

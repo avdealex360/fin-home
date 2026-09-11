@@ -431,6 +431,9 @@
   .tx { display: flex; align-items: center; gap: var(--space-3); padding: 10px 0; border-top: 1px solid var(--line); }
   .tx-ic { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 11px; display: grid; place-items: center; font-size: 17px; }
   .tx-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; background: none; border: none; padding: 0; text-align: left; }
+  /* A wide row should not shrink under the finger — it dims instead. */
+  .tx-main { transition: opacity 220ms var(--ease-out); }
+  .tx-main:active { transform: none; opacity: 0.55; transition-duration: 60ms; }
   .tx-name { font-size: 14px; }
   .tx-meta { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tx-amt { font-size: 14px; font-weight: 500; white-space: nowrap; }

@@ -58,12 +58,27 @@
     flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-3) var(--page-pad);
-    background: rgba(12, 14, 19, 0.86);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid var(--line);
+    background: rgba(12, 14, 19, 0.72);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+  /* Scroll-edge: content fades where it meets the floating chrome — no hard divider. */
+  .app-header::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -16px; height: 16px;
+    background: linear-gradient(to bottom, rgba(12, 14, 19, 0.55), rgba(12, 14, 19, 0));
+    pointer-events: none;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .app-header { background: var(--bg-base); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--line); }
+    .app-header::after { display: none; }
+  }
+  @media (prefers-contrast: more) {
+    .app-header { background: var(--bg-base); border-bottom: 1px solid var(--text-muted); }
   }
   .titles { min-width: 0; margin-right: auto; }
-  h1 { font-size: clamp(19px, 2vw, 24px); letter-spacing: -0.02em; }
+  h1 { font-size: clamp(19px, 2vw, 24px); letter-spacing: -0.022em; line-height: 1.15; }
   .sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
 
   .month {
@@ -77,6 +92,8 @@
     color: var(--text-secondary); border-radius: 8px; display: grid; place-items: center;
   }
   .month button:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-primary); }
+  .month button:active { background: rgba(255, 255, 255, 0.09); color: var(--text-primary); }
+  .month span { transition: opacity 120ms ease-out; }
   .month i { font-size: 17px; }
 
   .toggle {
@@ -84,6 +101,7 @@
     border-radius: 11px; border: 1px solid var(--line);
     background: var(--bg-surface); color: var(--text-secondary);
     font-size: 13px; font-weight: 500;
+    transition: background 160ms ease-out, color 160ms ease-out, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .toggle.on { background: rgba(106, 155, 255, 0.14); color: var(--blue); }
   .toggle i { font-size: 17px; }
