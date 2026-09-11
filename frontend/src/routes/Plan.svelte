@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Category, type DebtSummary } from '../lib/api'
+  import { api, type Category, type DebtSummary, type MonthSummary } from '../lib/api'
   import { period, dataVersion, invalidate, showToast, showHelp } from '../lib/stores'
   import { money } from '../lib/format'
   import ProgressBar from '../lib/components/ProgressBar.svelte'
@@ -13,6 +13,8 @@
   let saving = $state(false)
   let dirty = $state(false)
   let meter = $state<Record<string, { allocated: number; target: number }>>({})
+  // Month summary — feeds the «реальный доход» hint under the expected income.
+  let summary = $state<MonthSummary | null>(null)
 
   let newExp = $state({ description: '', amount: 0 })
   let newDebt = $state({ debt_id: 0, amount: 0 })
@@ -28,9 +30,11 @@
 
   async function load(year: number, month: number) {
     loading = true
-    const [p, cats, ds, m] = await Promise.all([
+    const [p, cats, ds, m, sm] = await Promise.all([
       api.plan(year, month), api.categories(), api.debts(), api.planMeter(year, month),
+      api.dashboard(year, month).catch(() => null),
     ])
+    summary = sm
     plan = p
     categories = cats.filter((c) => c.group !== 'income')
     debts = ds
@@ -165,7 +169,7 @@
 
           <div class="limits">
             <div class="lhead">
-              <span>Категория</span><span class="r">Потрачено</span><span class="r">Лимит</span><span class="r">Остаток</span>
+              <span class="h-name">Категория</span><span class="r">Потрачено</span><span class="r">Лимит</span><span class="r">Остаток</span>
             </div>
             {#each ['needs', 'wants', 'savings'] as grp}
               {@const cats = categories.filter((c) => c.group === grp)}
@@ -184,7 +188,7 @@
                       <i class="ti {c.icon}" style="color: {c.color}"></i>
                       <span>{c.name}</span>
                     </span>
-                    <span class="num r dim">{money(spent[c.id] ?? 0)}</span>
+                    <span class="num r dim c-spent">{money(spent[c.id] ?? 0)}</span>
                     <input
                       class="input num linput"
                       inputmode="numeric"
@@ -192,7 +196,7 @@
                       value={limits[c.id] || ''}
                       oninput={(e) => { limits[c.id] = numFromInput(e); dirty = true }}
                     />
-                    <span class="num r" style="color: var(--{left < 0 ? 'red' : left === 0 ? 'text-muted' : 'green'})">
+                    <span class="num r c-left" style="color: var(--{left < 0 ? 'red' : left === 0 ? 'text-muted' : 'green'})">
                       {left < 0 ? '−' : ''}{money(Math.abs(left))}
                     </span>
                   </div>
@@ -230,6 +234,23 @@
             onblur={saveIncome}
             disabled={saving}
           />
+          {#if summary}
+            {@const real = summary.income_fact + summary.carryover}
+            <div class="real-income">
+              <div class="row">
+                <span class="small muted">Реальный доход</span>
+                <span class="num small" style="color: var(--{real >= income ? 'green' : 'yellow'})">{money(real)} ₽</span>
+              </div>
+              <div class="tiny dim">
+                доходы {money(summary.income_fact)} ₽ + остаток с прошлого месяца {money(summary.carryover)} ₽
+              </div>
+              {#if $showHelp}
+                <p class="explain">
+                  Сколько денег на самом деле есть в этом месяце. Если меньше ожидаемого — лимиты стоит ужать.
+                </p>
+              {/if}
+            </div>
+          {/if}
           <div class="stack meters">
             {#each ['needs', 'wants', 'savings'] as grp}
               {@const allocated = meterAllocated(grp)}
@@ -321,8 +342,33 @@
   .lname { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 13.5px; }
   .lname i { font-size: 18px; flex-shrink: 0; }
   .lname span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .linput { text-align: right; padding: 9px 10px; font-size: 13px; }
+  .linput { text-align: right; padding: 9px 10px; font-size: 13px; min-width: 0; }
   .r { text-align: right; font-size: 13px; }
+
+  /* Phones: four columns do not fit a 390px card. The name takes its own line,
+     the three numbers share the second one; the header keeps only the numbers. */
+  @media (max-width: 560px) {
+    .lhead, .lrow {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 6px var(--space-2);
+    }
+    .lhead { grid-template-areas: 'spent lim left'; }
+    .lhead .h-name { display: none; }
+    .lrow {
+      grid-template-areas:
+        'name name name'
+        'spent lim left';
+      padding: 9px 0;
+    }
+    .lname { grid-area: name; font-size: 14px; }
+    .lname span { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; }
+    .c-spent { grid-area: spent; }
+    .linput { grid-area: lim; padding: 8px 8px; font-size: 13px; }
+    .c-left { grid-area: left; }
+    .r, .linput { font-size: 12.5px; }
+    .r, .c-left, .c-spent { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .grp { flex-wrap: wrap; row-gap: 2px; }
+  }
 
   .grp {
     display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
@@ -360,6 +406,7 @@
   }
 
   .income-input { margin-top: var(--space-3); font-size: var(--text-xl); text-align: right; padding: 12px 14px; }
+  .real-income { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
   .meters { margin-top: var(--space-4); gap: var(--space-3); }
 
   .add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
